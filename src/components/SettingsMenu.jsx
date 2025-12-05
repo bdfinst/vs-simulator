@@ -1,6 +1,6 @@
 import React from 'react';
 
-export const SettingsMenu = ({ stages, onUpdateStage, onClose }) => {
+export const SettingsMenu = ({ stages, onUpdateStage, onClose, deploymentSchedule, setDeploymentSchedule }) => {
   const handleInputChange = (stageId, field, value) => {
     const stage = stages.find(s => s.id === stageId);
     if (stage) {
@@ -83,6 +83,23 @@ export const SettingsMenu = ({ stages, onUpdateStage, onClose }) => {
               </div>
             </div>
           ))}
+          <div className="bg-slate-900/50 p-4 rounded-lg">
+            <h3 className="font-semibold text-lg text-blue-300 mb-3">Deployment Settings</h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label htmlFor="deployment-schedule" className="block text-sm font-medium text-slate-400 mb-1">Deployment Schedule (h)</label>
+                <input
+                  type="number"
+                  id="deployment-schedule"
+                  value={deploymentSchedule}
+                  onChange={(e) => setDeploymentSchedule(parseFloat(e.target.value) || 0)}
+                  className="w-full bg-slate-700 border border-slate-600 rounded-md px-2 py-1 text-white"
+                  step="1"
+                  min="1"
+                />
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>

@@ -2,6 +2,7 @@ import {
   AlertTriangle,
   ArrowLeft,
   ClipboardList,
+  Clock,
   FileQuestion,
   Layers,
   Pause,
@@ -39,7 +40,7 @@ const HOURS_PER_TICK = 0.5 // Scale: 2 ticks = 1 hour of simulated time
 
 // --- Components ---
 
-const SimulationCanvas = ({ items, stageStats, stageMetrics, stages }) => {
+const SimulationCanvas = ({ items, stageStats, stageMetrics, stages, problems, deploymentCountdown }) => {
   return (
     <div className="relative w-full h-80 bg-slate-900 rounded-xl overflow-hidden border border-slate-700 shadow-inner flex items-center px-2 select-none">
       {/* Connector Lines */}
@@ -70,25 +71,36 @@ const SimulationCanvas = ({ items, stageStats, stageMetrics, stages }) => {
                   ${ isSink ? 'border-green-500/50 bg-green-900/10' : 'border-slate-600 bg-slate-800/90' }
                 `}
               >
+                {stage.id === 'deploy' && problems.infrequentDeploy && (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center">
+                    <span className="text-xs text-slate-400">Next Release In</span>
+                    <span className="text-2xl font-bold text-purple-400">
+                      {Math.round(deploymentCountdown * HOURS_PER_TICK)}h
+                    </span>
+                  </div>
+                )}
                 {!isSink && (
                   <>
+                    {/* Zone 1: Input Queue */}
                     <div className="w-1/3 border-r border-slate-700/50 bg-black/20 flex flex-col justify-end items-center pb-1">
                       <span className="text-[8px] text-slate-500 uppercase rotate-180 writing-vertical-rl mb-2 opacity-50">
                         Queue
                       </span>
                     </div>
-                    <div className="w-1/3 flex flex-col justify-end items-center pb-1">
-                      {processCount > 0 && (
-                        <div className="absolute top-2 right-1/3 translate-x-1/2">
-                          <Zap size={10} className="text-blue-400 animate-pulse" />
-                        </div>
-                      )}
-                    </div>
-                    <div className="w-1/3 border-l border-slate-700/50 bg-black/20 flex flex-col justify-end items-center pb-1">
+                    {/* Zone 2: Wait (comes before processing) */}
+                    <div className="w-1/3 border-r border-slate-700/50 bg-black/20 flex flex-col justify-end items-center pb-1">
                       {waitCount > 0 && (
                         <span className="text-[8px] text-amber-500 font-bold mb-1">
                           WAIT
                         </span>
+                      )}
+                    </div>
+                    {/* Zone 3: Processing */}
+                    <div className="w-1/3 flex flex-col justify-end items-center pb-1">
+                      {processCount > 0 && (
+                        <div className="absolute top-2 left-2/3 translate-x-1/2">
+                          <Zap size={10} className="text-blue-400 animate-pulse" />
+                        </div>
                       )}
                     </div>
                   </>
@@ -142,7 +154,7 @@ const SimulationCanvas = ({ items, stageStats, stageMetrics, stages }) => {
         <div
           key={item.id}
           className={`absolute w-3 h-3 rounded-full shadow-sm border border-white/20 z-20 flex items-center justify-center
-            ${ item.isBug ? ITEM_COLORS.bug : item.isUnclear ? ITEM_COLORS.rework : item.inBatch ? ITEM_COLORS.batch : item.state === 'waiting' && !item.isBug && !item.isUnclear ? ITEM_COLORS.blocked : ITEM_COLORS.normal }
+            ${ item.isBug ? ITEM_COLORS.bug : item.isUnclear ? ITEM_COLORS.rework : (item.inBatch || (stages[item.stageIndex].id === 'deploy' && item.state === 'waiting')) ? ITEM_COLORS.batch : item.state === 'waiting' && !item.isBug && !item.isUnclear ? ITEM_COLORS.blocked : ITEM_COLORS.normal }
           `}
           style={{
             left: `${item.x}%`,
@@ -210,7 +222,11 @@ export default function ValueStreamSim() {
     contextSwitching: false,
     manualTesting: false,
     unclearRequirements: false,
+    infrequentDeploy: false,
   });
+
+  const [deploymentSchedule, setDeploymentSchedule] = useState(24); // Default: 24 hours
+  const [deploymentCountdown, setDeploymentCountdown] = useState(24 / 0.5); // Initialize to full schedule in ticks
 
   const stateRef = useRef({
     items: [],
@@ -218,6 +234,7 @@ export default function ValueStreamSim() {
     completedItems: [],
     startTime: Date.now(),
     history: stages.reduce((acc, stage) => ({ ...acc, [stage.id]: { totalProcess: 0, totalWait: 0, count: 0 } }), {}),
+    deploymentReleased: false,
   });
 
   const dynamicStages = useMemo(() => {
@@ -249,14 +266,15 @@ export default function ValueStreamSim() {
       startTime: Date.now(),
       history: stages.reduce((acc, stage) => ({ ...acc, [stage.id]: { totalProcess: 0, totalWait: 0, count: 0 } }), {}),
     };
+    setDeploymentCountdown(deploymentSchedule / HOURS_PER_TICK);
     setItems([]);
     setMetrics({ throughput: 0, wip: 0, cycleTime: 0 });
     setStageMetrics({});
   };
 
-  const updateSimulation = (now, currentStages, currentProblems) => {
+  const updateSimulation = (now, currentStages, currentProblems, currentDeploymentCountdown = 0) => {
     const s = stateRef.current;
-    
+
     // Spawning logic...
     const activeCount = s.items.filter(i => i.stageIndex < currentStages.length - 1).length;
     let spawnRate = 1800;
@@ -286,8 +304,8 @@ export default function ValueStreamSim() {
     const stageCount = currentStages.length;
     const stageWidth = 100 / stageCount;
     const OFFSET_QUEUE = 0.15;
-    const OFFSET_PROCESS = 0.5;
-    const OFFSET_WAIT = 0.85;
+    const OFFSET_WAIT = 0.5;      // Wait comes first (middle position)
+    const OFFSET_PROCESS = 0.85;  // Process comes after wait
 
     const stageLoad = {};
     s.items.forEach(i => {
@@ -331,33 +349,30 @@ export default function ValueStreamSim() {
             if (canTransfer) {
                 item.state = 'transferring';
             }
-        } 
+        }
         else {
-            let canStartProcessing = true;
-            if (stageConfig.actors > 0 && stageConfig.actors !== Infinity) {
-                const processingItems = s.items.filter(i => i.stageIndex === item.stageIndex && i.state === 'processing');
-                canStartProcessing = processingItems.length < stageConfig.actors;
-            }
+            // Move to waiting state first (wait time comes before processing)
+            item.state = 'waiting';
+            item.currentWaitTicks = 0;
 
-            let readyToProcess = false;
-            if (canStartProcessing) {
-                if (isAutomatedStage) {
-                    readyToProcess = true;
-                } else {
-                    if (Math.random() > 0.1) readyToProcess = true;
+            // For infrequent deploy, items wait indefinitely until countdown reaches 0
+            if (currentProblems.infrequentDeploy && currentStageId === 'deploy') {
+                item.targetWaitTicks = Infinity; // Wait indefinitely for deployment window
+            } else if (stageConfig.waitTime) {
+                // Set wait time based on stage configuration
+                let minWaitHours = stageConfig.waitTime.min;
+                let maxWaitHours = stageConfig.waitTime.max;
+
+                if (currentProblems.manualTesting && currentStageId === 'test') {
+                    minWaitHours = Math.max(minWaitHours, 8);
+                    maxWaitHours = Math.max(maxWaitHours, 8);
+                    if (maxWaitHours < minWaitHours) maxWaitHours = minWaitHours;
                 }
-            }
-            
-            if (readyToProcess) {
-                item.state = 'processing';
-                if (stageConfig.processTime) {
-                    const { min, max } = stageConfig.processTime;
-                    const processTimeHours = min + Math.random() * (max - min);
-                    item.targetProcessTicks = Math.max(1, processTimeHours / HOURS_PER_TICK);
-                } else {
-                    item.targetProcessTicks = 2;
-                }
-                item.progress = 0;
+
+                const waitTimeHours = minWaitHours + Math.random() * (maxWaitHours - minWaitHours);
+                item.targetWaitTicks = Math.max(1, waitTimeHours / HOURS_PER_TICK);
+            } else {
+                item.targetWaitTicks = 0;
             }
         }
       } else if (item.state === 'processing') {
@@ -390,42 +405,9 @@ export default function ValueStreamSim() {
         if (!isSink) {
           if (item.progress >= 100) {
             item.progress = 100;
-            let blocked = false;
-            if (currentProblems.silos && Math.random() < 0.15) blocked = true;
-            if (currentProblems.largeBatches && !item.isBug && !item.isUnclear)
-              blocked = true;
-            if (currentProblems.manualDeploy && currentStageId === 'deploy')
-              blocked = true;
-
-            if (isAutomatedStage && !blocked) {
-              item.state = 'transferring';
-              item.progress = 0;
-              item.currentWaitTicks = 0;
-              item.targetWaitTicks = 0;
-            } else {
-              item.state = 'waiting';
-              item.currentWaitTicks = 0;
-              const stageConfig = currentStages[item.stageIndex];
-              if (stageConfig.waitTime) {
-                let minWaitHours = stageConfig.waitTime.min;
-                let maxWaitHours = stageConfig.waitTime.max;
-
-                if (currentProblems.manualTesting && currentStageId === 'test') {
-                  minWaitHours = Math.max(minWaitHours, 8);
-                  maxWaitHours = Math.max(maxWaitHours, 8);
-                  if (maxWaitHours < minWaitHours) maxWaitHours = minWaitHours;
-                }
-
-                const waitTimeHours =
-                  minWaitHours + Math.random() * (maxWaitHours - minWaitHours);
-                item.targetWaitTicks = Math.max(
-                  1,
-                  waitTimeHours / HOURS_PER_TICK
-                );
-              } else {
-                item.targetWaitTicks = 0;
-              }
-            }
+            // After processing completes, move to transferring state
+            item.state = 'transferring';
+            item.progress = 0;
           }
         } else {
           item.progress = 100;
@@ -434,29 +416,34 @@ export default function ValueStreamSim() {
         item.targetX = stageBaseX + stageWidth * OFFSET_WAIT;
         item.currentWaitTicks++;
 
-        let canMove = true;
+        let canStartProcessing = true;
 
-        if (item.targetWaitTicks > 0 && item.currentWaitTicks < item.targetWaitTicks) {
-            canMove = false;
+        // Infrequent Deploy logic: items wait until countdown reaches 0
+        if (currentProblems.infrequentDeploy && currentStageId === 'deploy') {
+          if (currentDeploymentCountdown > 0) {
+            canStartProcessing = false;
+          }
+          // When countdown hits 0 or below, all items can move (batch release)
+        } else {
+          // Normal wait time logic (not infrequent deploy)
+          if (item.targetWaitTicks > 0 && item.currentWaitTicks < item.targetWaitTicks) {
+            canStartProcessing = false;
+          }
         }
 
-        if (canMove && !isSink) {
-            const nextStageIndex = item.stageIndex + 1;
-            if (nextStageIndex < currentStages.length) {
-                const nextStage = currentStages[nextStageIndex];
-                if (nextStage.actors > 0 && nextStage.actors !== Infinity) {
-                    const processingInNextStage = s.items.filter(
-                        i => i.stageIndex === nextStageIndex && i.state === 'processing'
-                    );
-                    if (processingInNextStage.length >= nextStage.actors) {
-                        canMove = false;
-                    }
-                }
+        // Check if stage has actor capacity
+        if (canStartProcessing && !isSink) {
+            const stageConfig = currentStages[item.stageIndex];
+            if (stageConfig.actors > 0 && stageConfig.actors !== Infinity) {
+                const processingItems = s.items.filter(
+                    i => i.stageIndex === item.stageIndex && i.state === 'processing'
+                );
+                canStartProcessing = processingItems.length < stageConfig.actors;
             }
         }
 
-        if (canMove) {
-            if (currentProblems.silos && Math.random() < 0.15) canMove = false;
+        if (canStartProcessing) {
+            if (currentProblems.silos && Math.random() < 0.15) canStartProcessing = false;
 
             if (currentProblems.largeBatches && !item.isBug && !item.isUnclear) {
                 const batchSize = 5;
@@ -468,7 +455,7 @@ export default function ValueStreamSim() {
                         !i.isUnclear
                 );
                 if (peers.length < batchSize) {
-                    canMove = false;
+                    canStartProcessing = false;
                     item.inBatch = true;
                 } else {
                     peers.forEach(p => (p.inBatch = false));
@@ -477,16 +464,24 @@ export default function ValueStreamSim() {
                 item.inBatch = false;
             }
 
-            if (currentProblems.manualDeploy && currentStageId === 'deploy') {
-                if (Math.random() > 0.02) canMove = false;
+            // Manual deploy gate - only applies when infrequent deploy is NOT active
+            if (currentProblems.manualDeploy && !currentProblems.infrequentDeploy && currentStageId === 'deploy') {
+                if (Math.random() > 0.02) canStartProcessing = false;
             }
         }
-        
-        if (canMove && !isSink) {
-          item.state = 'transferring';
+
+        // Move to processing state after wait time completes
+        if (canStartProcessing && !isSink) {
+          item.state = 'processing';
+          const stageConfig = currentStages[item.stageIndex];
+          if (stageConfig.processTime) {
+              const { min, max } = stageConfig.processTime;
+              const processTimeHours = min + Math.random() * (max - min);
+              item.targetProcessTicks = Math.max(1, processTimeHours / HOURS_PER_TICK);
+          } else {
+              item.targetProcessTicks = 2;
+          }
           item.progress = 0;
-          item.currentWaitTicks = 0;
-          item.targetWaitTicks = 0;
         }
       } else if (item.state === 'transferring') {
         const nextIdx = item.stageIndex + 1;
@@ -607,18 +602,39 @@ export default function ValueStreamSim() {
   useEffect(() => {
     let animationFrameId;
     let lastTick = Date.now();
+    let currentCountdown = deploymentCountdown;
+
     const tick = () => {
       const now = Date.now();
       if (now - lastTick > 1000 / FPS) {
-        updateSimulation(now, dynamicStages, problems);
+        // Update simulation with current countdown value
+        updateSimulation(now, dynamicStages, problems, currentCountdown);
+
+        // Then update countdown for next tick
+        if (problems.infrequentDeploy) {
+          // If countdown is already at 0 or below, reset for NEXT tick
+          if (currentCountdown <= 0) {
+            currentCountdown = deploymentSchedule / HOURS_PER_TICK;
+          } else {
+            // Decrement countdown
+            currentCountdown = currentCountdown - 1;
+          }
+          setDeploymentCountdown(currentCountdown);
+        }
         lastTick = now;
       }
       if (isRunning) animationFrameId = requestAnimationFrame(tick);
     };
     if (isRunning) animationFrameId = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(animationFrameId);
-  }, [isRunning, problems, dynamicStages]);
+  }, [isRunning, problems, dynamicStages, deploymentSchedule, deploymentCountdown]);
 
+  // Initialize countdown when infrequent deploy is activated
+  useEffect(() => {
+    if (problems.infrequentDeploy && deploymentCountdown === 0) {
+      setDeploymentCountdown(deploymentSchedule / HOURS_PER_TICK);
+    }
+  }, [problems.infrequentDeploy, deploymentSchedule]);
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-200 font-sans p-4 md:p-8">
@@ -627,6 +643,8 @@ export default function ValueStreamSim() {
           stages={stages}
           onUpdateStage={handleUpdateStage}
           onClose={() => setIsSettingsOpen(false)}
+          deploymentSchedule={deploymentSchedule}
+          setDeploymentSchedule={setDeploymentSchedule}
         />
       )}
       <div className="max-w-6xl mx-auto space-y-6">
@@ -686,6 +704,8 @@ export default function ValueStreamSim() {
               stageStats={getStageStats()}
               stageMetrics={stageMetrics}
               stages={dynamicStages}
+              problems={problems}
+              deploymentCountdown={deploymentCountdown}
             />
           </div>
         </div>
@@ -744,6 +764,14 @@ export default function ValueStreamSim() {
               icon={AlertTriangle}
               description="Simulates a 'Change Review Board' window. Massive Wait Time increase."
             />
+            <ProblemToggle
+              id="infrequentDeploy"
+              label="Infrequent Deploys"
+              active={problems.infrequentDeploy}
+              onClick={toggleProblem}
+              icon={Clock}
+              description={`Schedules deployments every ${deploymentSchedule} hours. Work waits for the next cycle.`}
+            />
           </div>
         </div>
 
@@ -775,11 +803,11 @@ export default function ValueStreamSim() {
               <div className="w-1/3 bg-black/30 flex items-center justify-center text-[8px]">
                 Q
               </div>
-              <div className="w-1/3 flex items-center justify-center text-[8px]">
-                Work
-              </div>
               <div className="w-1/3 bg-black/30 flex items-center justify-center text-[8px]">
                 Wait
+              </div>
+              <div className="w-1/3 flex items-center justify-center text-[8px]">
+                Work
               </div>
             </div>
             <span>Structure</span>

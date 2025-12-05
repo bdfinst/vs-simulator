@@ -77,6 +77,7 @@ The simulator models six stages in a value stream:
 6. **Production**: Completed work
 
 Each stage has three zones:
+
 - **Queue**: Work waiting to start
 - **Wait**: Work delayed due to system constraints
 - **Work**: Active processing
@@ -120,28 +121,12 @@ Use the Settings menu to customize:
 
 ## Technology Stack
 
-- **React** 18.3.1 - UI framework
-- **Vite** 7.2.6 - Build tool and dev server
-- **Tailwind CSS** 4.1.17 - Styling
+- **React** - UI framework
+- **Vite** - Build tool and dev server
+- **Tailwind CSS** - Styling
 - **Lucide React** - Icons
 - **Vitest** - Testing framework
 - **Testing Library** - Component testing
-
-## Project Structure
-
-```
-vs-simulator/
-├── src/
-│   ├── App.jsx              # Main simulator component
-│   ├── components/          # Reusable components
-│   │   └── SettingsMenu.jsx # Configuration interface
-│   ├── test/                # Test files
-│   └── main.jsx             # Application entry point
-├── index.html               # HTML template
-├── package.json             # Dependencies and scripts
-├── vite.config.js           # Vite configuration
-└── README.md                # This file
-```
 
 ## Use Cases
 
@@ -162,6 +147,7 @@ This project is open source and available under the MIT License.
 ## Acknowledgments
 
 Built to demonstrate principles from:
+
 - Theory of Constraints
 - Lean Software Development
 - DevOps Research and Assessment (DORA)

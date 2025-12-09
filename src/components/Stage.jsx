@@ -2,7 +2,7 @@ import React from 'react'
 import { AlertTriangle, Users, Zap, Settings, Hand, Bot, Clock } from 'lucide-react'
 import { StageZone } from './StageZone.jsx'
 
-const HOURS_PER_TICK = 0.5 // Must match App.jsx constant
+const HOURS_PER_TICK = 5 // Must match App.jsx constant
 
 /**
  * Stage - Represents a single stage in the value stream
@@ -142,6 +142,16 @@ export const Stage = ({
               }`}
             >
               {(stageMetrics.avgWait * HOURS_PER_TICK).toFixed(1)}h
+            </span>
+          </div>
+          <div className="flex justify-between w-full px-1 text-[10px] bg-slate-800/50 rounded py-0.5">
+            <span className="text-slate-400">%C/A</span>
+            <span
+              className={`font-mono ${
+                (stage.percentComplete || 100) < 100 ? 'text-yellow-400' : 'text-green-400'
+              }`}
+            >
+              {stage.percentComplete || 100}%
             </span>
           </div>
         </div>

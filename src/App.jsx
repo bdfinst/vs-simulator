@@ -21,18 +21,18 @@ import { WorkItem } from './components/WorkItem.jsx'
 
 const STAGES_CONFIG = [
   { id: 'backlog', label: 'Backlog', type: 'queue', processTime: { min: 0, max: 0 }, waitTime: { min: 0, max: 0 } },
-  { id: 'analysis', label: 'Refining Work', type: 'process', stepType: 'manual', processTime: { min: 2, max: 4 }, waitTime: { min: 8, max: 8 }, actors: 2 },
-  { id: 'dev', label: 'Development', type: 'process', stepType: 'manual', processTime: { min: 1, max: 8 }, waitTime: { min: 8, max: 8 }, actors: 5 },
-  { id: 'review', label: 'Code Review', type: 'process', stepType: 'manual', processTime: { min: 0.5, max: 2 }, waitTime: { min: 4, max: 8 }, actors: 2 },
-  { id: 'test', label: 'Testing', type: 'process', stepType: 'automated', processTime: { min: 0.5, max: 1 }, waitTime: { min: 0, max: 0 }, actors: Infinity },
-  { id: 'deploy', label: 'Deployment', type: 'process', stepType: 'batch', processTime: { min: 0.8, max: 1.2 }, waitTime: { min: 0, max: 0 }, actors: Infinity, cadence: 24 },
+  { id: 'analysis', label: 'Refining Work', type: 'process', stepType: 'manual', processTime: { min: 2, max: 4 }, waitTime: { min: 8, max: 8 }, actors: 2, percentComplete: 100 },
+  { id: 'dev', label: 'Development', type: 'process', stepType: 'manual', processTime: { min: 1, max: 8 }, waitTime: { min: 8, max: 8 }, actors: 5, percentComplete: 100 },
+  { id: 'review', label: 'Code Review', type: 'process', stepType: 'manual', processTime: { min: 0.5, max: 2 }, waitTime: { min: 4, max: 8 }, actors: 2, percentComplete: 100 },
+  { id: 'test', label: 'Testing', type: 'process', stepType: 'automated', processTime: { min: 0.5, max: 1 }, waitTime: { min: 0, max: 0 }, actors: Infinity, percentComplete: 100 },
+  { id: 'deploy', label: 'Deployment', type: 'process', stepType: 'batch', processTime: { min: 0.8, max: 1.2 }, waitTime: { min: 0, max: 0 }, actors: Infinity, cadence: 24, percentComplete: 100 },
   { id: 'done', label: 'Production', type: 'sink', processTime: { min: 0, max: 0 }, waitTime: { min: 0, max: 0 } },
 ]
 
 const FPS = 30 // Animation frames per second (real time)
-const HOURS_PER_TICK = 0.5 // Each tick = 0.5 simulated hours (2 ticks = 1 hour)
+const HOURS_PER_TICK = 5 // Each tick = 5 simulated hours (2 ticks = 10 hours)
 // Time scale: Process times and wait times in stage configs are in simulated hours
-// At 1x simulation speed: 2 ticks per second = 1 simulated hour per second (0.5 hours/tick * 2 ticks/sec)
+// At 1x simulation speed: 2 ticks per second = 10 simulated hours per second (5 hours/tick * 2 ticks/sec)
 // Simulation speed multiplier affects how fast ticks are processed
 
 // --- Components ---
@@ -137,6 +137,7 @@ export default function ValueStreamSim() {
   const [deploymentSchedule, setDeploymentSchedule] = useState(24); // Default: 24 simulated hours
   const [deploymentCountdown, setDeploymentCountdown] = useState(24 / HOURS_PER_TICK); // Initialize to full schedule in ticks
   const [batchSize, setBatchSize] = useState(5); // Number of items created per batch
+  const [productionDefectRate, setProductionDefectRate] = useState(0); // Percentage of deployed items that become production defects (default: 0)
   const [simulationSpeed, setSimulationSpeed] = useState(1.0); // Speed multiplier (1.0 = normal)
 
   const stateRef = useRef({
@@ -229,46 +230,7 @@ export default function ValueStreamSim() {
       s.lastSpawn = now;
     }
 
-    // Defect generation (Unstable Production constraint)
-    // Normal: spawn defect batch at 20% of feature rate (every 50 seconds)
-    // With constraint: spawn defect batch at 40% of feature rate (every 25 seconds)
-    const defectBaseInterval = spawnInterval * 5; // 5x slower than features = 20% rate
-    let defectInterval = defectBaseInterval;
-
-    // Apply "Unstable Production" constraint (2x defect rate = half interval)
-    if (currentProblems.unstableProduction) {
-      defectInterval = defectInterval / 2;
-    }
-
-    if (!s.lastDefectSpawn) s.lastDefectSpawn = now;
-
-    if (now - s.lastDefectSpawn > defectInterval) {
-      // Create a batch of defect items (typically smaller batch)
-      const defectBatchSize = Math.max(1, Math.floor(currentBatchSize / 2));
-      for (let i = 0; i < defectBatchSize; i++) {
-        s.items.push({
-          id: Math.random().toString(36).substr(2, 9),
-          stageIndex: 0,
-          progress: 0,
-          x: 0,
-          yOffset: (Math.random() - 0.5) * 35,
-          isBug: true, // This is a defect
-          isOriginalDefect: true, // Track if this was spawned as a defect
-          isUnclear: false,
-          inBatch: false,
-          createdAt: now,
-          state: 'queued',
-          targetX: 0,
-          currStageProcessTicks: 0,
-          currStageWaitTicks: 0,
-          targetProcessTicks: 0,
-          currentIntakeTicks: 0,
-          targetIntakeTicks: null,
-          currentWaitTicks: 0,
-        });
-      }
-      s.lastDefectSpawn = now;
-    }
+    // Production defects are now handled when items reach production (in the item completion logic below)
 
     const stageCount = currentStages.length;
     const stageWidth = 100 / stageCount;
@@ -475,14 +437,6 @@ export default function ValueStreamSim() {
           if (item.progress >= 100) {
             item.progress = 100;
 
-            // Convert reworked bugs to features after processing completes in Development
-            // This prevents infinite rework loops
-            if (item.isBeingReworked && currentStageId === 'dev') {
-              item.isBug = false;
-              item.isOriginalDefect = false;
-              item.isBeingReworked = false;
-            }
-
             // After processing completes, move to transferring state
             item.state = 'transferring';
             item.progress = 0;
@@ -572,39 +526,49 @@ export default function ValueStreamSim() {
           }
           item.currStageProcessTicks = 0;
           item.currStageWaitTicks = 0;
+          // Check for rework based on %C/A of the stage just completed
+          const completedStage = currentStages[item.stageIndex];
+          const percentComplete = completedStage.percentComplete || 100;
+
+          // Determine if this item needs rework based on %C/A
+          const needsRework = Math.random() * 100 > percentComplete;
+
+          if (needsRework && !item.isBug) {
+            // Convert to bug/rework item and send back to previous stage
+            item.isBug = true;
+            item.state = 'returning';
+            // Return to the stage before the one just completed (or backlog if at first stage)
+            item.returnTargetIndex = Math.max(0, item.stageIndex - 1);
+            return;
+          }
+
           item.stageIndex = nextIdx;
 
           const nextStage = currentStages[item.stageIndex];
-          if (currentProblems.codingErrors && nextStage.id === 'test') {
-            if (Math.random() < 0.35) {
-              item.isBug = true;
-              item.state = 'returning';
-              item.returnTargetIndex = 2; // Development
-              return;
-            }
-          }
-
-          // Bugs have a chance to slip through to deployment
-          // Not all bugs are caught - some make it to production
-          if (item.isBug && nextStage.id === 'deploy') {
-            // 80% chance to catch and reject the bug before deploy
-            if (Math.random() < 0.8) {
-              item.state = 'returning';
-              item.returnTargetIndex = 2; // Development
-              return;
-            }
-            // 20% slip through to production
-          }
 
           if (nextStage.id === 'done') {
             s.completedItems.push(now);
             if (s.completedItems.length > 50) s.completedItems.shift();
 
-            // If this is a defect in production, send it back to Backlog
+            // Bugs that reach production get sent back to Backlog
             if (item.isBug) {
               item.state = 'returning';
               item.returnTargetIndex = 0; // Return to Backlog
               return;
+            }
+
+            // Check for production defects based on percentage
+            // Only apply to non-bug items that are reaching production
+            if (productionDefectRate > 0 && !item.isBug) {
+              const defectChance = Math.random() * 100;
+              if (defectChance < productionDefectRate) {
+                // This item becomes a production defect
+                item.isBug = true;
+                item.isProductionDefect = true; // Mark as coming from production
+                item.state = 'returning';
+                item.returnTargetIndex = 0; // Return to Backlog
+                return;
+              }
             }
 
             item.state = 'processing';
@@ -637,9 +601,15 @@ export default function ValueStreamSim() {
           if (item.isUnclear && item.returnTargetIndex === 1) {
             item.isUnclear = false;
           }
-          // Mark bugs as being reworked (they'll be converted to features after processing completes)
-          if (item.isBug && item.returnTargetIndex === 2) {
-            item.isBeingReworked = true;
+          // Production defects become rework items when they start processing again
+          if (item.isProductionDefect) {
+            item.isProductionDefect = false; // No longer a production defect
+            item.isRework = true; // Now it's being reworked
+            item.isBug = false; // Not a bug anymore
+          }
+          // Other bugs that complete rework become regular items again
+          else if (item.isBug) {
+            item.isBug = false;
           }
         }
       }
@@ -756,6 +726,8 @@ export default function ValueStreamSim() {
           }}
           deploymentSchedule={deploymentSchedule}
           setDeploymentSchedule={setDeploymentSchedule}
+          productionDefectRate={productionDefectRate}
+          setProductionDefectRate={setProductionDefectRate}
           selectedStageId={selectedStageId}
         />
       )}
@@ -782,7 +754,7 @@ export default function ValueStreamSim() {
         </div>
 
         {/* Control Sliders */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {/* Batch Size Slider */}
           <div className="bg-slate-800/50 p-4 rounded-lg border border-slate-700">
             <div className="flex items-center justify-between mb-2">
@@ -805,6 +777,31 @@ export default function ValueStreamSim() {
               <span>1</span>
               <span>10</span>
               <span>20</span>
+            </div>
+          </div>
+
+          {/* Production Defect Rate Slider */}
+          <div className="bg-slate-800/50 p-4 rounded-lg border border-slate-700">
+            <div className="flex items-center justify-between mb-2">
+              <label htmlFor="defect-rate" className="text-sm font-medium text-slate-300">
+                Production Defects
+              </label>
+              <span className="text-sm font-mono text-red-300">{productionDefectRate}%</span>
+            </div>
+            <input
+              id="defect-rate"
+              type="range"
+              min="0"
+              max="100"
+              step="1"
+              value={productionDefectRate}
+              onChange={(e) => setProductionDefectRate(parseInt(e.target.value))}
+              className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer"
+            />
+            <div className="flex justify-between text-xs text-slate-500 mt-1">
+              <span>0%</span>
+              <span>50%</span>
+              <span>100%</span>
             </div>
           </div>
 

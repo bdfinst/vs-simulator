@@ -1,6 +1,6 @@
 import React from 'react';
 
-export const SettingsMenu = ({ stages, onUpdateStage, onClose, deploymentSchedule, setDeploymentSchedule, selectedStageId = null }) => {
+export const SettingsMenu = ({ stages, onUpdateStage, onClose, deploymentSchedule, setDeploymentSchedule, productionDefectRate, setProductionDefectRate, selectedStageId = null }) => {
   const handleInputChange = (stageId, field, value) => {
     const stage = stages.find(s => s.id === stageId);
     if (stage) {
@@ -19,10 +19,16 @@ export const SettingsMenu = ({ stages, onUpdateStage, onClose, deploymentSchedul
           newStage.actors = Infinity;
           if (!newStage.cadence) newStage.cadence = 24;
         } else if (value === 'manual') {
-          // Manual - ensure waitTime exists
-          if (!newStage.waitTime) newStage.waitTime = { min: 0, max: 0 };
+          // Manual - ensure waitTime exists with default values
+          if (!newStage.waitTime) newStage.waitTime = { min: 1, max: 1 };
+          // Set default process time for manual steps
+          if (!newStage.processTime || newStage.processTime.min === 0) {
+            newStage.processTime = { min: 4, max: 4 };
+          }
           // Keep existing actors or default to 1
           if (newStage.actors === Infinity) newStage.actors = 1;
+          // Ensure percentComplete exists
+          if (!newStage.percentComplete) newStage.percentComplete = 100;
         }
       } else if (field === 'cadence') {
         newStage.cadence = parseFloat(value) || 1;
@@ -46,8 +52,12 @@ export const SettingsMenu = ({ stages, onUpdateStage, onClose, deploymentSchedul
           }
         }
       } else {
-        // Handle direct properties like 'actors'
-        newStage[field] = value === 'Infinity' ? Infinity : parseInt(value, 10) || 0;
+        // Handle direct properties like 'actors' and 'percentComplete'
+        if (field === 'percentComplete') {
+          newStage[field] = parseFloat(value) || 100;
+        } else {
+          newStage[field] = value === 'Infinity' ? Infinity : parseInt(value, 10) || 0;
+        }
       }
 
       onUpdateStage(stageId, newStage);
@@ -156,11 +166,31 @@ export const SettingsMenu = ({ stages, onUpdateStage, onClose, deploymentSchedul
                   </div>
                 )}
               </div>
+
+              {/* Percent Complete and Accurate */}
+              <div className="mt-4">
+                <label htmlFor={`${stage.id}-percentComplete`} className="block text-sm font-medium text-slate-400 mb-1">
+                  Percent Complete & Accurate (%C/A)
+                </label>
+                <input
+                  type="number"
+                  id={`${stage.id}-percentComplete`}
+                  value={stage.percentComplete || 100}
+                  onChange={(e) => handleInputChange(stage.id, 'percentComplete', e.target.value)}
+                  className="w-full md:w-1/3 bg-slate-700 border border-slate-600 rounded-md px-2 py-1 text-white"
+                  step="1"
+                  min="0"
+                  max="100"
+                />
+                <p className="text-xs text-slate-500 mt-1">
+                  Percentage of work items that pass through this stage without requiring rework (0-100%)
+                </p>
+              </div>
             </div>
           ))}
           {!selectedStageId && (
             <div className="bg-slate-900/50 p-4 rounded-lg">
-              <h3 className="font-semibold text-lg text-blue-300 mb-3">Deployment Settings</h3>
+              <h3 className="font-semibold text-lg text-blue-300 mb-3">Global Settings</h3>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
                   <label htmlFor="deployment-schedule" className="block text-sm font-medium text-slate-400 mb-1">Deployment Schedule (h)</label>
@@ -173,6 +203,29 @@ export const SettingsMenu = ({ stages, onUpdateStage, onClose, deploymentSchedul
                     step="1"
                     min="1"
                   />
+                </div>
+                <div>
+                  <label htmlFor="production-defect-rate" className="block text-sm font-medium text-slate-400 mb-1">
+                    Production Defect Rate: <span className="text-blue-300 font-mono">{productionDefectRate}%</span>
+                  </label>
+                  <input
+                    type="range"
+                    id="production-defect-rate"
+                    value={productionDefectRate}
+                    onChange={(e) => setProductionDefectRate(parseFloat(e.target.value) || 0)}
+                    className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                    min="0"
+                    max="100"
+                    step="1"
+                  />
+                  <div className="flex justify-between text-xs text-slate-500 mt-1">
+                    <span>0%</span>
+                    <span>50%</span>
+                    <span>100%</span>
+                  </div>
+                  <p className="text-xs text-slate-500 mt-1">
+                    Percentage of deployed items that return as production defects
+                  </p>
                 </div>
               </div>
             </div>

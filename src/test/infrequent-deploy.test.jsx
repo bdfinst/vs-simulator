@@ -14,10 +14,11 @@ describe('Infrequent Deployment Constraint', () => {
   });
 
   // Helper function to advance simulation by N ticks
+  // At 1x speed: 500ms per tick (2 ticks per second = 1 simulated hour per second)
   const advanceSimulation = async (ticks) => {
     for (let i = 0; i < ticks; i++) {
       await act(async () => {
-        vi.advanceTimersByTime(1000 / 30); // 30 FPS
+        vi.advanceTimersByTime(500); // 500ms per tick at 1x speed
       });
     }
   };

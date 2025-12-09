@@ -29,8 +29,11 @@ const STAGES_CONFIG = [
   { id: 'done', label: 'Production', type: 'sink', processTime: { min: 0, max: 0 }, waitTime: { min: 0, max: 0 } },
 ]
 
-const FPS = 30
-const HOURS_PER_TICK = 0.5 // Scale: 2 ticks = 1 hour of simulated time
+const FPS = 30 // Animation frames per second (real time)
+const HOURS_PER_TICK = 0.5 // Each tick = 0.5 simulated hours (2 ticks = 1 hour)
+// Time scale: Process times and wait times in stage configs are in simulated hours
+// At 1x simulation speed: 2 ticks per second = 1 simulated hour per second (0.5 hours/tick * 2 ticks/sec)
+// Simulation speed multiplier affects how fast ticks are processed
 
 // --- Components ---
 
@@ -130,9 +133,10 @@ export default function ValueStreamSim() {
     unstableProduction: false,
   });
 
-  const [deploymentSchedule, setDeploymentSchedule] = useState(24); // Default: 24 hours
-  const [deploymentCountdown, setDeploymentCountdown] = useState(24 / 0.5); // Initialize to full schedule in ticks
-  const [intakeRate, setIntakeRate] = useState(1.0); // Intake rate multiplier (1.0 = normal)
+  const [deploymentSchedule, setDeploymentSchedule] = useState(24); // Default: 24 simulated hours
+  const [deploymentCountdown, setDeploymentCountdown] = useState(24 / HOURS_PER_TICK); // Initialize to full schedule in ticks
+  const [batchSize, setBatchSize] = useState(5); // Number of items created per batch
+  const [simulationSpeed, setSimulationSpeed] = useState(1.0); // Speed multiplier (1.0 = normal)
 
   const stateRef = useRef({
     items: [],
@@ -178,81 +182,83 @@ export default function ValueStreamSim() {
     setStageMetrics({});
   };
 
-  const updateSimulation = (now, currentStages, currentProblems, currentDeploymentCountdown = 0) => {
+  const updateSimulation = (now, currentStages, currentProblems, currentDeploymentCountdown = 0, currentBatchSize = 5) => {
     const s = stateRef.current;
 
-    // Spawning logic...
-    const activeCount = s.items.filter(i => i.stageIndex < currentStages.length - 1).length;
-    let baseSpawnRate = 1800;
-    if (activeCount > 30) baseSpawnRate = 3000;
+    // Spawning logic - create batches of items at regular intervals
+    // Base spawn rate: create a batch every 10 seconds (at 1x speed)
+    const baseSpawnInterval = 10 * 1000; // 10 seconds
+    let spawnInterval = baseSpawnInterval;
 
-    // Calculate feature spawn rate
-    let featureSpawnRate = baseSpawnRate;
-    // Apply "Too Many Features" constraint (2x feature rate = half spawn rate)
+    // Apply "Too Many Features" constraint (2x feature rate = half spawn interval)
     if (currentProblems.tooManyFeatures) {
-      featureSpawnRate = featureSpawnRate / 2;
+      spawnInterval = spawnInterval / 2;
     }
-    // Apply intake rate multiplier (higher intakeRate = faster spawning = lower spawn interval)
-    featureSpawnRate = featureSpawnRate / intakeRate;
 
-    if (now - s.lastSpawn > featureSpawnRate) {
-      s.items.push({
-        id: Math.random().toString(36).substr(2, 9),
-        stageIndex: 0,
-        progress: 0,
-        x: 0,
-        yOffset: (Math.random() - 0.5) * 35,
-        isBug: false,
-        isUnclear: false,
-        inBatch: false,
-        createdAt: now,
-        state: 'queued',
-        targetX: 0,
-        currStageProcessTicks: 0,
-        currStageWaitTicks: 0,
-        targetProcessTicks: 0,
-        currentIntakeTicks: 0,
-        targetIntakeTicks: null,
-        currentWaitTicks: 0,
-      });
+    if (now - s.lastSpawn > spawnInterval) {
+      // Create a batch of feature items
+      for (let i = 0; i < currentBatchSize; i++) {
+        s.items.push({
+          id: Math.random().toString(36).substr(2, 9),
+          stageIndex: 0,
+          progress: 0,
+          x: 0,
+          yOffset: (Math.random() - 0.5) * 35,
+          isBug: false,
+          isUnclear: false,
+          inBatch: false,
+          createdAt: now,
+          state: 'queued',
+          targetX: 0,
+          currStageProcessTicks: 0,
+          currStageWaitTicks: 0,
+          targetProcessTicks: 0,
+          currentIntakeTicks: 0,
+          targetIntakeTicks: null,
+          currentWaitTicks: 0,
+        });
+      }
       s.lastSpawn = now;
     }
 
     // Defect generation (Unstable Production constraint)
-    // Normal: defects generated at 20% of feature rate
-    // With constraint: defects generated at 40% of feature rate (2x)
-    // Use baseSpawnRate (not featureSpawnRate) to maintain consistent defect ratio
-    const defectBaseRate = baseSpawnRate * 5; // 5x slower than base features = 20%
-    let defectRate = defectBaseRate;
+    // Normal: spawn defect batch at 20% of feature rate (every 50 seconds)
+    // With constraint: spawn defect batch at 40% of feature rate (every 25 seconds)
+    const defectBaseInterval = spawnInterval * 5; // 5x slower than features = 20% rate
+    let defectInterval = defectBaseInterval;
 
-    // Apply "Unstable Production" constraint (2x defect rate)
+    // Apply "Unstable Production" constraint (2x defect rate = half interval)
     if (currentProblems.unstableProduction) {
-      defectRate = defectRate / 2; // Halve the time = double the rate
+      defectInterval = defectInterval / 2;
     }
 
     if (!s.lastDefectSpawn) s.lastDefectSpawn = now;
 
-    if (now - s.lastDefectSpawn > defectRate) {
-      s.items.push({
-        id: Math.random().toString(36).substr(2, 9),
-        stageIndex: 0,
-        progress: 0,
-        x: 0,
-        yOffset: (Math.random() - 0.5) * 35,
-        isBug: true, // This is a defect
-        isOriginalDefect: true, // Track if this was spawned as a defect
-        isUnclear: false,
-        inBatch: false,
-        createdAt: now,
-        state: 'queued',
-        targetX: 0,
-        currStageProcessTicks: 0,
-        currStageWaitTicks: 0,
-        targetProcessTicks: 0,
-        currentIntakeTicks: 0,
-        targetIntakeTicks: null,
-        currentWaitTicks: 0,
-      });
+    if (now - s.lastDefectSpawn > defectInterval) {
+      // Create a batch of defect items (typically smaller batch)
+      const defectBatchSize = Math.max(1, Math.floor(currentBatchSize / 2));
+      for (let i = 0; i < defectBatchSize; i++) {
+        s.items.push({
+          id: Math.random().toString(36).substr(2, 9),
+          stageIndex: 0,
+          progress: 0,
+          x: 0,
+          yOffset: (Math.random() - 0.5) * 35,
+          isBug: true, // This is a defect
+          isOriginalDefect: true, // Track if this was spawned as a defect
+          isUnclear: false,
+          inBatch: false,
+          createdAt: now,
+          state: 'queued',
+          targetX: 0,
+          currStageProcessTicks: 0,
+          currStageWaitTicks: 0,
+          targetProcessTicks: 0,
+          currentIntakeTicks: 0,
+          targetIntakeTicks: null,
+          currentWaitTicks: 0,
+        });
+      }
       s.lastDefectSpawn = now;
     }
 
@@ -329,6 +335,7 @@ export default function ValueStreamSim() {
                     }
 
                     const waitTimeHours = minWaitHours + Math.random() * (maxWaitHours - minWaitHours);
+                    // Convert simulated hours to ticks (e.g., 8 hours / 0.5 hours per tick = 16 ticks)
                     item.targetIntakeTicks = Math.max(1, waitTimeHours / HOURS_PER_TICK);
                 }
 
@@ -358,6 +365,7 @@ export default function ValueStreamSim() {
                     if (stageConfig.processTime) {
                         const { min, max } = stageConfig.processTime;
                         const processTimeHours = min + Math.random() * (max - min);
+                        // Convert simulated hours to ticks (e.g., 4 hours / 0.5 hours per tick = 8 ticks)
                         item.targetProcessTicks = Math.max(1, processTimeHours / HOURS_PER_TICK);
                     } else {
                         item.targetProcessTicks = 2;
@@ -473,6 +481,7 @@ export default function ValueStreamSim() {
           if (stageConfig.processTime) {
               const { min, max } = stageConfig.processTime;
               const processTimeHours = min + Math.random() * (max - min);
+              // Convert simulated hours to ticks
               item.targetProcessTicks = Math.max(1, processTimeHours / HOURS_PER_TICK);
           } else {
               item.targetProcessTicks = 2;
@@ -590,8 +599,10 @@ export default function ValueStreamSim() {
       t => now - t < 5000
     ).length;
     const throughputPerSec = recentCompletions / 5;
-    const estCycleTime =
-      throughputPerSec > 0 ? activeItems.length / throughputPerSec : 0;
+    // Cycle time using Little's Law: WIP / Throughput (in seconds)
+    // Convert to hours by dividing by 3600 (seconds per hour)
+    const estCycleTimeSeconds = throughputPerSec > 0 ? activeItems.length / throughputPerSec : 0;
+    const estCycleTimeHours = estCycleTimeSeconds / 3600;
 
     const currentStageMetrics = {};
     Object.keys(s.history).forEach(key => {
@@ -607,7 +618,7 @@ export default function ValueStreamSim() {
     setMetrics({
       wip: activeItems.length,
       throughput: doneCount,
-      cycleTime: estCycleTime.toFixed(1),
+      cycleTime: estCycleTimeHours.toFixed(1),
     });
   };
   
@@ -633,9 +644,13 @@ export default function ValueStreamSim() {
 
     const tick = () => {
       const now = Date.now();
-      if (now - lastTick > 1000 / FPS) {
-        // Update simulation with current countdown value
-        updateSimulation(now, dynamicStages, problems, currentCountdown);
+      // At 1x speed: want 2 ticks per second (since 2 ticks = 1 hour)
+      // Base interval for 1x: 1000ms / 2 ticks = 500ms per tick
+      // Adjust by simulation speed: faster speed = shorter interval
+      const frameInterval = 500 / simulationSpeed;
+      if (now - lastTick > frameInterval) {
+        // Update simulation with current countdown value and batch size
+        updateSimulation(now, dynamicStages, problems, currentCountdown, batchSize);
 
         // Then update countdown for next tick
         if (problems.infrequentDeploy) {
@@ -654,7 +669,7 @@ export default function ValueStreamSim() {
     };
     if (isRunning) animationFrameId = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(animationFrameId);
-  }, [isRunning, problems, dynamicStages, deploymentSchedule, deploymentCountdown]);
+  }, [isRunning, problems, dynamicStages, deploymentSchedule, deploymentCountdown, simulationSpeed, batchSize]);
 
   // Initialize countdown when infrequent deploy is activated
   useEffect(() => {
@@ -700,28 +715,56 @@ export default function ValueStreamSim() {
           </div>
         </div>
 
-        {/* Intake Rate Slider */}
-        <div className="bg-slate-800/50 p-4 rounded-lg border border-slate-700">
-          <div className="flex items-center justify-between mb-2">
-            <label htmlFor="intake-rate" className="text-sm font-medium text-slate-300">
-              Intake Rate
-            </label>
-            <span className="text-sm font-mono text-blue-300">{intakeRate.toFixed(1)}x</span>
+        {/* Control Sliders */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Batch Size Slider */}
+          <div className="bg-slate-800/50 p-4 rounded-lg border border-slate-700">
+            <div className="flex items-center justify-between mb-2">
+              <label htmlFor="batch-size" className="text-sm font-medium text-slate-300">
+                Batch Size
+              </label>
+              <span className="text-sm font-mono text-blue-300">{batchSize} items</span>
+            </div>
+            <input
+              id="batch-size"
+              type="range"
+              min="1"
+              max="20"
+              step="1"
+              value={batchSize}
+              onChange={(e) => setBatchSize(parseInt(e.target.value))}
+              className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer"
+            />
+            <div className="flex justify-between text-xs text-slate-500 mt-1">
+              <span>1</span>
+              <span>10</span>
+              <span>20</span>
+            </div>
           </div>
-          <input
-            id="intake-rate"
-            type="range"
-            min="0.1"
-            max="3.0"
-            step="0.1"
-            value={intakeRate}
-            onChange={(e) => setIntakeRate(parseFloat(e.target.value))}
-            className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer"
-          />
-          <div className="flex justify-between text-xs text-slate-500 mt-1">
-            <span>0.1x (Slow)</span>
-            <span>1.0x (Normal)</span>
-            <span>3.0x (Fast)</span>
+
+          {/* Simulation Speed Slider */}
+          <div className="bg-slate-800/50 p-4 rounded-lg border border-slate-700">
+            <div className="flex items-center justify-between mb-2">
+              <label htmlFor="sim-speed" className="text-sm font-medium text-slate-300">
+                Simulation Speed
+              </label>
+              <span className="text-sm font-mono text-purple-300">{simulationSpeed.toFixed(1)}x</span>
+            </div>
+            <input
+              id="sim-speed"
+              type="range"
+              min="1.0"
+              max="100.0"
+              step="1.0"
+              value={simulationSpeed}
+              onChange={(e) => setSimulationSpeed(parseFloat(e.target.value))}
+              className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer"
+            />
+            <div className="flex justify-between text-xs text-slate-500 mt-1">
+              <span>1.0x (1h/sec)</span>
+              <span>50.0x</span>
+              <span>100.0x</span>
+            </div>
           </div>
         </div>
 
@@ -743,9 +786,9 @@ export default function ValueStreamSim() {
           <MetricCard
             label="Est. Cycle Time"
             value={metrics.cycleTime}
-            unit="sec"
+            unit="hours"
             subtext="Avg time to complete"
-            trend={metrics.cycleTime > 10 ? 'bad' : 'good'}
+            trend={metrics.cycleTime > 100 ? 'bad' : 'good'}
           />
         </div>
 

@@ -2,7 +2,7 @@ import React from 'react'
 import { AlertTriangle, Users, Zap, Settings, Hand, Bot, Clock } from 'lucide-react'
 import { StageZone } from './StageZone.jsx'
 
-const HOURS_PER_TICK = 5 // Must match App.jsx constant
+const HOURS_PER_TICK = 1 // Must match App.jsx constant
 
 /**
  * Stage - Represents a single stage in the value stream

@@ -30,9 +30,9 @@ const STAGES_CONFIG = [
 ]
 
 const FPS = 30 // Animation frames per second (real time)
-const HOURS_PER_TICK = 5 // Each tick = 5 simulated hours (2 ticks = 10 hours)
+const HOURS_PER_TICK = 1 // Each tick = 1 simulated hour
 // Time scale: Process times and wait times in stage configs are in simulated hours
-// At 1x simulation speed: 2 ticks per second = 10 simulated hours per second (5 hours/tick * 2 ticks/sec)
+// At 1x simulation speed: 1 tick per second = 1 simulated hour per second (1 hour/tick * 1 tick/sec)
 // Simulation speed multiplier affects how fast ticks are processed
 
 // --- Components ---
@@ -138,7 +138,7 @@ export default function ValueStreamSim() {
   const [deploymentCountdown, setDeploymentCountdown] = useState(24 / HOURS_PER_TICK); // Initialize to full schedule in ticks
   const [batchSize, setBatchSize] = useState(5); // Number of items created per batch
   const [productionDefectRate, setProductionDefectRate] = useState(0); // Percentage of deployed items that become production defects (default: 0)
-  const [simulationSpeed, setSimulationSpeed] = useState(1.0); // Speed multiplier (1.0 = normal)
+  const [simulationSpeed, setSimulationSpeed] = useState(10.0); // Speed multiplier (10.0 = default)
 
   const stateRef = useRef({
     items: [],
@@ -680,10 +680,11 @@ export default function ValueStreamSim() {
 
     const tick = () => {
       const now = Date.now();
-      // At 1x speed: want 2 ticks per second (since 2 ticks = 1 hour)
-      // Base interval for 1x: 1000ms / 2 ticks = 500ms per tick
+      // At 1x speed: want 1 tick per second = 1 simulated hour per second
+      // (1 tick/sec × 1 hour/tick = 1 hour/sec)
+      // Base interval for 1x: 1000ms per tick
       // Adjust by simulation speed: faster speed = shorter interval
-      const frameInterval = 500 / simulationSpeed;
+      const frameInterval = 1000 / simulationSpeed;
       if (now - lastTick > frameInterval) {
         // Update simulation with current countdown value and batch size
         updateSimulation(now, dynamicStages, problems, currentCountdown, batchSize);
@@ -817,7 +818,7 @@ export default function ValueStreamSim() {
               id="sim-speed"
               type="range"
               min="1.0"
-              max="100.0"
+              max="30.0"
               step="1.0"
               value={simulationSpeed}
               onChange={(e) => setSimulationSpeed(parseFloat(e.target.value))}
@@ -825,8 +826,8 @@ export default function ValueStreamSim() {
             />
             <div className="flex justify-between text-xs text-slate-500 mt-1">
               <span>1.0x (1h/sec)</span>
-              <span>50.0x</span>
-              <span>100.0x</span>
+              <span>15.0x</span>
+              <span>30.0x</span>
             </div>
           </div>
         </div>

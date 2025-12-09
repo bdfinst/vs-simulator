@@ -14,11 +14,11 @@ describe('Infrequent Deployment Constraint', () => {
   });
 
   // Helper function to advance simulation by N ticks
-  // At 1x speed: 500ms per tick (2 ticks per second = 1 simulated hour per second)
+  // At 1x speed: 1000ms per tick (1 tick per second = 1 simulated hour per second)
   const advanceSimulation = async (ticks) => {
     for (let i = 0; i < ticks; i++) {
       await act(async () => {
-        vi.advanceTimersByTime(500); // 500ms per tick at 1x speed
+        vi.advanceTimersByTime(1000); // 1000ms per tick at 1x speed
       });
     }
   };
@@ -53,7 +53,7 @@ describe('Infrequent Deployment Constraint', () => {
     return null;
   };
 
-  describe('Background: Simulation running with 24h deployment schedule and 0.5h per tick', () => {
+  describe('Background: Simulation running with 24h deployment schedule and 1h per tick', () => {
     it('should initialize with default deployment schedule', () => {
       const { container } = render(<App />);
 

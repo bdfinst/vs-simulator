@@ -6,7 +6,27 @@ export const SettingsMenu = ({ stages, onUpdateStage, onClose, deploymentSchedul
     if (stage) {
       const newStage = { ...stage };
 
-      if (field.includes('.')) {
+      if (field === 'stepType') {
+        // Handle step type change
+        newStage.stepType = value;
+
+        // Apply step type defaults
+        if (value === 'automated') {
+          newStage.waitTime = { min: 0, max: 0 };
+          newStage.actors = Infinity;
+        } else if (value === 'batch') {
+          newStage.waitTime = { min: 0, max: 0 };
+          newStage.actors = Infinity;
+          if (!newStage.cadence) newStage.cadence = 24;
+        } else if (value === 'manual') {
+          // Manual - ensure waitTime exists
+          if (!newStage.waitTime) newStage.waitTime = { min: 0, max: 0 };
+          // Keep existing actors or default to 1
+          if (newStage.actors === Infinity) newStage.actors = 1;
+        }
+      } else if (field === 'cadence') {
+        newStage.cadence = parseFloat(value) || 1;
+      } else if (field.includes('.')) {
         const [key, subkey] = field.split('.');
         const parsedValue = parseFloat(value) || 0;
         newStage[key] = { ...newStage[key], [subkey]: parsedValue };
@@ -53,39 +73,86 @@ export const SettingsMenu = ({ stages, onUpdateStage, onClose, deploymentSchedul
           {stagesToShow.map(stage => (
             <div key={stage.id} className="bg-slate-900/50 p-4 rounded-lg">
               <h3 className="font-semibold text-lg text-blue-300 mb-3">{stage.label}</h3>
+
+              {/* Step Type Selector */}
+              <div className="mb-4">
+                <label htmlFor={`${stage.id}-stepType`} className="block text-sm font-medium text-slate-400 mb-2">Step Type</label>
+                <select
+                  id={`${stage.id}-stepType`}
+                  value={stage.stepType || 'manual'}
+                  onChange={(e) => handleInputChange(stage.id, 'stepType', e.target.value)}
+                  className="w-full bg-slate-700 border border-slate-600 rounded-md px-2 py-1 text-white"
+                >
+                  <option value="manual">Manual</option>
+                  <option value="automated">Automated</option>
+                  <option value="batch">Batch</option>
+                </select>
+              </div>
+
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                {/* Actors */}
+                {/* Actors (WIP Limit) */}
                 <div>
-                  <label htmlFor={`${stage.id}-actors`} className="block text-sm font-medium text-slate-400 mb-1">Concurrent Actors</label>
-                  <input
-                    type="number"
-                    id={`${stage.id}-actors`}
-                    value={stage.actors === Infinity ? '' : stage.actors}
-                    placeholder={stage.actors === Infinity ? 'Infinity' : ''}
-                    onChange={(e) => handleInputChange(stage.id, 'actors', e.target.value || 'Infinity')}
-                    className="w-full bg-slate-700 border border-slate-600 rounded-md px-2 py-1 text-white"
-                    step="1"
-                    min="1"
-                  />
+                  <label htmlFor={`${stage.id}-actors`} className="block text-sm font-medium text-slate-400 mb-1">
+                    WIP Limit
+                  </label>
+                  {stage.stepType === 'automated' || stage.stepType === 'batch' ? (
+                    <div className="w-full bg-slate-700 border border-slate-600 rounded-md px-2 py-1 text-white text-center">
+                      ∞
+                    </div>
+                  ) : (
+                    <input
+                      type="number"
+                      id={`${stage.id}-actors`}
+                      value={stage.actors === Infinity ? '' : stage.actors}
+                      placeholder={stage.actors === Infinity ? '∞' : ''}
+                      onChange={(e) => handleInputChange(stage.id, 'actors', e.target.value || 'Infinity')}
+                      className="w-full bg-slate-700 border border-slate-600 rounded-md px-2 py-1 text-white"
+                      step="1"
+                      min="1"
+                    />
+                  )}
                 </div>
-                
+
                 {/* Process Time */}
                 <div className="space-y-2">
                   <label className="block text-sm font-medium text-slate-400">Process Time (h)</label>
                   <div className="flex gap-2">
-                    <input type="number" placeholder="Min" value={stage.processTime.min} onChange={(e) => handleInputChange(stage.id, 'processTime.min', e.target.value)} className="w-full bg-slate-700 border-slate-600 rounded px-2 py-1" step="0.1"/>
-                    <input type="number" placeholder="Max" value={stage.processTime.max} onChange={(e) => handleInputChange(stage.id, 'processTime.max', e.target.value)} className="w-full bg-slate-700 border-slate-600 rounded px-2 py-1" step="0.1"/>
+                    <input type="number" placeholder="Min" value={stage.processTime.min} onChange={(e) => handleInputChange(stage.id, 'processTime.min', e.target.value)} className="w-full bg-slate-700 border-slate-600 rounded px-2 py-1 text-white" step="0.1"/>
+                    <input type="number" placeholder="Max" value={stage.processTime.max} onChange={(e) => handleInputChange(stage.id, 'processTime.max', e.target.value)} className="w-full bg-slate-700 border-slate-600 rounded px-2 py-1 text-white" step="0.1"/>
                   </div>
                 </div>
 
-                {/* Wait Time */}
-                {stage.waitTime && (
+                {/* Wait Time (Manual only) or Cadence (Batch only) */}
+                {stage.stepType === 'manual' && stage.waitTime && (
                   <div className="space-y-2">
                     <label className="block text-sm font-medium text-slate-400">Wait Time (h)</label>
                     <div className="flex gap-2">
-                      <input type="number" placeholder="Min" value={stage.waitTime.min} onChange={(e) => handleInputChange(stage.id, 'waitTime.min', e.target.value)} className="w-full bg-slate-700 border-slate-600 rounded px-2 py-1" step="0.1"/>
-                      <input type="number" placeholder="Max" value={stage.waitTime.max} onChange={(e) => handleInputChange(stage.id, 'waitTime.max', e.target.value)} className="w-full bg-slate-700 border-slate-600 rounded px-2 py-1" step="0.1"/>
+                      <input type="number" placeholder="Min" value={stage.waitTime.min} onChange={(e) => handleInputChange(stage.id, 'waitTime.min', e.target.value)} className="w-full bg-slate-700 border-slate-600 rounded px-2 py-1 text-white" step="0.1"/>
+                      <input type="number" placeholder="Max" value={stage.waitTime.max} onChange={(e) => handleInputChange(stage.id, 'waitTime.max', e.target.value)} className="w-full bg-slate-700 border-slate-600 rounded px-2 py-1 text-white" step="0.1"/>
                     </div>
+                  </div>
+                )}
+
+                {stage.stepType === 'automated' && (
+                  <div className="space-y-2">
+                    <label className="block text-sm font-medium text-slate-400">Wait Time (h)</label>
+                    <div className="w-full bg-slate-700 border border-slate-600 rounded-md px-2 py-1 text-white text-center">
+                      0 (Automated)
+                    </div>
+                  </div>
+                )}
+
+                {stage.stepType === 'batch' && (
+                  <div className="space-y-2">
+                    <label className="block text-sm font-medium text-slate-400">Cadence (h)</label>
+                    <input
+                      type="number"
+                      value={stage.cadence || 24}
+                      onChange={(e) => handleInputChange(stage.id, 'cadence', e.target.value)}
+                      className="w-full bg-slate-700 border-slate-600 rounded px-2 py-1 text-white"
+                      step="1"
+                      min="1"
+                    />
                   </div>
                 )}
               </div>

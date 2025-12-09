@@ -1,5 +1,5 @@
 import React from 'react'
-import { AlertTriangle, Users, Zap, Settings } from 'lucide-react'
+import { AlertTriangle, Users, Zap, Settings, Hand, Bot, Clock } from 'lucide-react'
 import { StageZone } from './StageZone.jsx'
 
 const HOURS_PER_TICK = 0.5 // Must match App.jsx constant
@@ -14,6 +14,7 @@ export const Stage = ({
   metrics,
   problems,
   deploymentCountdown,
+  batchCountdown,
   onSettingsClick,
 }) => {
   const isSink = stage.type === 'sink'
@@ -24,10 +25,31 @@ export const Stage = ({
 
   const stageMetrics = metrics || { avgProcess: 0, avgWait: 0 }
 
+  // Get step type icon and color
+  const getStepTypeIcon = () => {
+    if (isSink) return null
+
+    switch (stage.stepType) {
+      case 'manual':
+        return <Hand size={10} className="text-blue-400" title="Manual step" />
+      case 'automated':
+        return <Bot size={10} className="text-green-400" title="Automated step" />
+      case 'batch':
+        return <Clock size={10} className="text-purple-400" title="Batch step" />
+      default:
+        return <Hand size={10} className="text-blue-400" title="Manual step" />
+    }
+  }
+
   return (
     <div className="flex flex-col items-center group relative w-32">
-      {/* Stage Label with Settings Button */}
+      {/* Stage Label with Step Type Icon and Settings Button */}
       <div className="flex items-center gap-1 mb-2">
+        {!isSink && (
+          <span className="flex items-center">
+            {getStepTypeIcon()}
+          </span>
+        )}
         <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
           {stage.label}
         </span>
@@ -49,12 +71,22 @@ export const Stage = ({
           ${isSink ? 'border-green-500/50 bg-green-900/10' : 'border-slate-600 bg-slate-800/90'}
         `}
       >
-        {/* Infrequent Deploy Countdown Overlay */}
+        {/* Infrequent Deploy Countdown Overlay - takes precedence over batch countdown */}
         {stage.id === 'deploy' && problems?.infrequentDeploy && (
           <div className="absolute inset-0 flex flex-col items-center justify-center z-10">
             <span className="text-xs text-slate-400">Next Release In</span>
             <span className="text-2xl font-bold text-purple-400">
               {Math.round(deploymentCountdown * HOURS_PER_TICK)}h
+            </span>
+          </div>
+        )}
+
+        {/* Batch Step Countdown Overlay - shown when infrequent deploy is not active */}
+        {stage.stepType === 'batch' && batchCountdown !== undefined && !(stage.id === 'deploy' && problems?.infrequentDeploy) && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center z-10">
+            <span className="text-xs text-slate-400">Next Batch In</span>
+            <span className="text-2xl font-bold text-purple-400">
+              {Math.round(batchCountdown * HOURS_PER_TICK)}h
             </span>
           </div>
         )}

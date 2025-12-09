@@ -21,11 +21,11 @@ import { WorkItem } from './components/WorkItem.jsx'
 
 const STAGES_CONFIG = [
   { id: 'backlog', label: 'Backlog', type: 'queue', processTime: { min: 0, max: 0 }, waitTime: { min: 0, max: 0 } },
-  { id: 'analysis', label: 'Refining Work', type: 'process', processTime: { min: 2, max: 4 }, waitTime: { min: 8, max: 8 }, actors: 2 },
-  { id: 'dev', label: 'Development', type: 'process', processTime: { min: 1, max: 8 }, waitTime: { min: 8, max: 8 }, actors: 5 },
-  { id: 'review', label: 'Code Review', type: 'process', processTime: { min: 0.5, max: 2 }, waitTime: { min: 4, max: 8 }, actors: 2 },
-  { id: 'test', label: 'Testing', type: 'process', processTime: { min: 0.5, max: 1 }, waitTime: { min: 0, max: 0 }, actors: 1 },
-  { id: 'deploy', label: 'Deployment', type: 'process', processTime: { min: 0.8, max: 1.2 }, waitTime: { min: 0, max: 0 }, actors: Infinity },
+  { id: 'analysis', label: 'Refining Work', type: 'process', stepType: 'manual', processTime: { min: 2, max: 4 }, waitTime: { min: 8, max: 8 }, actors: 2 },
+  { id: 'dev', label: 'Development', type: 'process', stepType: 'manual', processTime: { min: 1, max: 8 }, waitTime: { min: 8, max: 8 }, actors: 5 },
+  { id: 'review', label: 'Code Review', type: 'process', stepType: 'manual', processTime: { min: 0.5, max: 2 }, waitTime: { min: 4, max: 8 }, actors: 2 },
+  { id: 'test', label: 'Testing', type: 'process', stepType: 'automated', processTime: { min: 0.5, max: 1 }, waitTime: { min: 0, max: 0 }, actors: Infinity },
+  { id: 'deploy', label: 'Deployment', type: 'process', stepType: 'batch', processTime: { min: 0.8, max: 1.2 }, waitTime: { min: 0, max: 0 }, actors: Infinity, cadence: 24 },
   { id: 'done', label: 'Production', type: 'sink', processTime: { min: 0, max: 0 }, waitTime: { min: 0, max: 0 } },
 ]
 
@@ -37,7 +37,7 @@ const HOURS_PER_TICK = 0.5 // Each tick = 0.5 simulated hours (2 ticks = 1 hour)
 
 // --- Components ---
 
-const SimulationCanvas = ({ items, stageStats, stageMetrics, stages, problems, deploymentCountdown, onStageSettingsClick }) => {
+const SimulationCanvas = ({ items, stageStats, stageMetrics, stages, problems, deploymentCountdown, batchCountdowns, onStageSettingsClick }) => {
   return (
     <div className="relative w-full h-80 bg-slate-900 rounded-xl overflow-hidden border border-slate-700 shadow-inner flex items-center px-2 select-none">
       {/* Connector Lines */}
@@ -64,6 +64,7 @@ const SimulationCanvas = ({ items, stageStats, stageMetrics, stages, problems, d
             metrics={stageMetrics[stage.id]}
             problems={problems}
             deploymentCountdown={deploymentCountdown}
+            batchCountdown={batchCountdowns?.[stage.id]}
             onSettingsClick={onStageSettingsClick}
           />
         ))}
@@ -145,6 +146,13 @@ export default function ValueStreamSim() {
     startTime: Date.now(),
     history: stages.reduce((acc, stage) => ({ ...acc, [stage.id]: { totalProcess: 0, totalWait: 0, count: 0 } }), {}),
     deploymentReleased: false,
+    // Initialize batch countdowns for all batch-type stages
+    batchCountdowns: stages.reduce((acc, stage) => {
+      if (stage.stepType === 'batch' && stage.cadence) {
+        acc[stage.id] = stage.cadence / HOURS_PER_TICK;
+      }
+      return acc;
+    }, {}),
   });
 
   const dynamicStages = useMemo(() => {
@@ -268,6 +276,50 @@ export default function ValueStreamSim() {
     const OFFSET_WAIT = 0.5;      // Wait comes first (middle position)
     const OFFSET_PROCESS = 0.85;  // Process comes after wait
 
+    // Update batch countdowns BEFORE processing items
+    // This ensures items see the countdown value before it changes
+    currentStages.forEach(stage => {
+      if (stage.stepType === 'batch' && stage.cadence) {
+        // Initialize countdown if not exists (check for undefined/null, not falsy, since 0 is valid)
+        if (s.batchCountdowns[stage.id] === undefined || s.batchCountdowns[stage.id] === null) {
+          s.batchCountdowns[stage.id] = stage.cadence / HOURS_PER_TICK;
+          console.log('[INIT at top] Initializing', stage.id, 'countdown to', s.batchCountdowns[stage.id]);
+        }
+
+        // Decrement countdown
+        if (s.batchCountdowns[stage.id] > 0) {
+          s.batchCountdowns[stage.id]--;
+          if (stage.id === 'deploy' && s.batchCountdowns[stage.id] <= 2) {
+            console.log('[COUNTDOWN] deploy countdown:', s.batchCountdowns[stage.id]);
+          }
+        } else if (s.batchCountdowns[stage.id] <= 0) {
+          // Check if there are any queued items at this stage
+          const queuedItemsAtStage = s.items.filter(
+            i => i.stageIndex === currentStages.findIndex(st => st.id === stage.id) && i.state === 'queued'
+          );
+
+          if (stage.id === 'deploy') {
+            console.log('[AT ZERO] deploy countdown:', s.batchCountdowns[stage.id], 'queued items:', queuedItemsAtStage.length);
+          }
+
+          // Only reset countdown if there are no queued items (batch has been released)
+          // or if countdown has been at 0 for a while (negative value means it's been waiting)
+          if (queuedItemsAtStage.length === 0 || s.batchCountdowns[stage.id] < -2) {
+            if (stage.id === 'deploy') {
+              console.log('[RESET] Resetting countdown to', stage.cadence / HOURS_PER_TICK);
+            }
+            s.batchCountdowns[stage.id] = stage.cadence / HOURS_PER_TICK;
+          } else {
+            // Keep countdown at 0 to allow queued items to be released
+            if (stage.id === 'deploy') {
+              console.log('[HOLD AT ZERO] Keeping countdown at', s.batchCountdowns[stage.id], 'will decrement to', s.batchCountdowns[stage.id] - 1);
+            }
+            s.batchCountdowns[stage.id]--;
+          }
+        }
+      }
+    });
+
     const stageLoad = {};
     s.items.forEach(i => {
       if (i.state !== 'returning') {
@@ -317,11 +369,25 @@ export default function ValueStreamSim() {
             // This represents the time before work is picked up from the queue
             let intakeWaitComplete = false;
 
-            // For infrequent deploy, items wait indefinitely in queued until countdown reaches 0
-            if (currentProblems.infrequentDeploy && currentStageId === 'deploy') {
+            // For batch steps, items wait until cadence countdown reaches 0
+            if (stageConfig.stepType === 'batch' && !currentProblems.infrequentDeploy) {
+                // Initialize batch countdown if not exists (check for undefined/null, not falsy, since 0 is valid)
+                if (s.batchCountdowns[currentStageId] === undefined || s.batchCountdowns[currentStageId] === null) {
+                    s.batchCountdowns[currentStageId] = (stageConfig.cadence || 24) / HOURS_PER_TICK;
+                    console.log('[INIT in item loop] Initializing countdown to', s.batchCountdowns[currentStageId]);
+                }
+
+                if (s.batchCountdowns[currentStageId] <= 0) {
+                    intakeWaitComplete = true;
+                }
+            } else if (currentProblems.infrequentDeploy && currentStageId === 'deploy') {
+                // Legacy infrequent deploy constraint (kept for backward compatibility)
                 if (currentDeploymentCountdown <= 0) {
                     intakeWaitComplete = true;
                 }
+            } else if (stageConfig.stepType === 'automated' || (stageConfig.waitTime && stageConfig.waitTime.min === 0 && stageConfig.waitTime.max === 0)) {
+                // Automated steps or steps with 0 wait time proceed immediately
+                intakeWaitComplete = true;
             } else if (stageConfig.waitTime) {
                 // Initialize target intake wait time if not set
                 if (!item.targetIntakeTicks) {
@@ -801,6 +867,7 @@ export default function ValueStreamSim() {
               stages={dynamicStages}
               problems={problems}
               deploymentCountdown={deploymentCountdown}
+              batchCountdowns={stateRef.current.batchCountdowns}
               onStageSettingsClick={(stageId) => {
                 setSelectedStageId(stageId);
                 setIsSettingsOpen(true);

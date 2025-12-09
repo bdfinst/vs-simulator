@@ -12,7 +12,6 @@ export const Stage = ({
   stage,
   stageStats,
   metrics,
-  problems,
   deploymentCountdown,
   batchCountdown,
   onSettingsClick,
@@ -71,18 +70,8 @@ export const Stage = ({
           ${isSink ? 'border-green-500/50 bg-green-900/10' : 'border-slate-600 bg-slate-800/90'}
         `}
       >
-        {/* Infrequent Deploy Countdown Overlay - takes precedence over batch countdown */}
-        {stage.id === 'deploy' && problems?.infrequentDeploy && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center z-10">
-            <span className="text-xs text-slate-400">Next Release In</span>
-            <span className="text-2xl font-bold text-purple-400">
-              {Math.round(deploymentCountdown * HOURS_PER_TICK)}h
-            </span>
-          </div>
-        )}
-
-        {/* Batch Step Countdown Overlay - shown when infrequent deploy is not active */}
-        {stage.stepType === 'batch' && batchCountdown !== undefined && !(stage.id === 'deploy' && problems?.infrequentDeploy) && (
+        {/* Batch Step Countdown Overlay */}
+        {stage.stepType === 'batch' && batchCountdown !== undefined && (
           <div className="absolute inset-0 flex flex-col items-center justify-center z-10">
             <span className="text-xs text-slate-400">Next Batch In</span>
             <span className="text-2xl font-bold text-purple-400">

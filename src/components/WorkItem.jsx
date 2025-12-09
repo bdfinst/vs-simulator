@@ -43,7 +43,7 @@ export const WorkItem = ({ item, stages }) => {
       className={`absolute w-3 h-3 rounded-full shadow-sm border border-white/20 z-20 flex items-center justify-center ${getItemColor()}`}
       style={{
         left: `${item.x}%`,
-        top: `${50 + item.yOffset}%`,
+        top: `calc(${50 + item.yOffset}% - 6px)`,
         transform: 'translate(-50%, -50%)',
         transition: getTransition(),
       }}

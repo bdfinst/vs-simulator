@@ -1,6 +1,10 @@
 import React from 'react';
 
 export const SettingsMenu = ({ stages, onUpdateStage, onClose, deploymentSchedule, setDeploymentSchedule, productionDefectRate, setProductionDefectRate, selectedStageId = null }) => {
+  const handleDoubleClick = (e) => {
+    e.target.select();
+  };
+
   const handleInputChange = (stageId, field, value) => {
     const stage = stages.find(s => s.id === stageId);
     if (stage) {
@@ -19,8 +23,8 @@ export const SettingsMenu = ({ stages, onUpdateStage, onClose, deploymentSchedul
           newStage.actors = Infinity;
           if (!newStage.cadence) newStage.cadence = 24;
         } else if (value === 'manual') {
-          // Manual - ensure waitTime exists with default values
-          if (!newStage.waitTime) newStage.waitTime = { min: 1, max: 1 };
+          // Manual - set default wait time to 1
+          newStage.waitTime = { min: 1, max: 1 };
           // Set default process time for manual steps
           if (!newStage.processTime || newStage.processTime.min === 0) {
             newStage.processTime = { min: 4, max: 4 };
@@ -116,6 +120,7 @@ export const SettingsMenu = ({ stages, onUpdateStage, onClose, deploymentSchedul
                       value={stage.actors === Infinity ? '' : stage.actors}
                       placeholder={stage.actors === Infinity ? '∞' : ''}
                       onChange={(e) => handleInputChange(stage.id, 'actors', e.target.value || 'Infinity')}
+                      onDoubleClick={handleDoubleClick}
                       className="w-full bg-slate-700 border border-slate-600 rounded-md px-2 py-1 text-white"
                       step="1"
                       min="1"
@@ -127,8 +132,8 @@ export const SettingsMenu = ({ stages, onUpdateStage, onClose, deploymentSchedul
                 <div className="space-y-2">
                   <label className="block text-sm font-medium text-slate-400">Process Time (h)</label>
                   <div className="flex gap-2">
-                    <input type="number" placeholder="Min" value={stage.processTime.min} onChange={(e) => handleInputChange(stage.id, 'processTime.min', e.target.value)} className="w-full bg-slate-700 border-slate-600 rounded px-2 py-1 text-white" step="0.1"/>
-                    <input type="number" placeholder="Max" value={stage.processTime.max} onChange={(e) => handleInputChange(stage.id, 'processTime.max', e.target.value)} className="w-full bg-slate-700 border-slate-600 rounded px-2 py-1 text-white" step="0.1"/>
+                    <input type="number" placeholder="Min" value={stage.processTime.min} onChange={(e) => handleInputChange(stage.id, 'processTime.min', e.target.value)} onDoubleClick={handleDoubleClick} className="w-full bg-slate-700 border-slate-600 rounded px-2 py-1 text-white" step="0.1"/>
+                    <input type="number" placeholder="Max" value={stage.processTime.max} onChange={(e) => handleInputChange(stage.id, 'processTime.max', e.target.value)} onDoubleClick={handleDoubleClick} className="w-full bg-slate-700 border-slate-600 rounded px-2 py-1 text-white" step="0.1"/>
                   </div>
                 </div>
 
@@ -137,8 +142,8 @@ export const SettingsMenu = ({ stages, onUpdateStage, onClose, deploymentSchedul
                   <div className="space-y-2">
                     <label className="block text-sm font-medium text-slate-400">Wait Time (h)</label>
                     <div className="flex gap-2">
-                      <input type="number" placeholder="Min" value={stage.waitTime.min} onChange={(e) => handleInputChange(stage.id, 'waitTime.min', e.target.value)} className="w-full bg-slate-700 border-slate-600 rounded px-2 py-1 text-white" step="0.1"/>
-                      <input type="number" placeholder="Max" value={stage.waitTime.max} onChange={(e) => handleInputChange(stage.id, 'waitTime.max', e.target.value)} className="w-full bg-slate-700 border-slate-600 rounded px-2 py-1 text-white" step="0.1"/>
+                      <input type="number" placeholder="Min" value={stage.waitTime.min} onChange={(e) => handleInputChange(stage.id, 'waitTime.min', e.target.value)} onDoubleClick={handleDoubleClick} className="w-full bg-slate-700 border-slate-600 rounded px-2 py-1 text-white" step="0.1"/>
+                      <input type="number" placeholder="Max" value={stage.waitTime.max} onChange={(e) => handleInputChange(stage.id, 'waitTime.max', e.target.value)} onDoubleClick={handleDoubleClick} className="w-full bg-slate-700 border-slate-600 rounded px-2 py-1 text-white" step="0.1"/>
                     </div>
                   </div>
                 )}
@@ -159,6 +164,7 @@ export const SettingsMenu = ({ stages, onUpdateStage, onClose, deploymentSchedul
                       type="number"
                       value={stage.cadence || 24}
                       onChange={(e) => handleInputChange(stage.id, 'cadence', e.target.value)}
+                      onDoubleClick={handleDoubleClick}
                       className="w-full bg-slate-700 border-slate-600 rounded px-2 py-1 text-white"
                       step="1"
                       min="1"
@@ -177,6 +183,7 @@ export const SettingsMenu = ({ stages, onUpdateStage, onClose, deploymentSchedul
                   id={`${stage.id}-percentComplete`}
                   value={stage.percentComplete || 100}
                   onChange={(e) => handleInputChange(stage.id, 'percentComplete', e.target.value)}
+                  onDoubleClick={handleDoubleClick}
                   className="w-full md:w-1/3 bg-slate-700 border border-slate-600 rounded-md px-2 py-1 text-white"
                   step="1"
                   min="0"
@@ -199,6 +206,7 @@ export const SettingsMenu = ({ stages, onUpdateStage, onClose, deploymentSchedul
                     id="deployment-schedule"
                     value={deploymentSchedule}
                     onChange={(e) => setDeploymentSchedule(parseFloat(e.target.value) || 0)}
+                    onDoubleClick={handleDoubleClick}
                     className="w-full bg-slate-700 border border-slate-600 rounded-md px-2 py-1 text-white"
                     step="1"
                     min="1"

@@ -1,16 +1,7 @@
 import {
-  AlertTriangle,
-  ClipboardList,
-  Clock,
-  FileQuestion,
-  Layers,
   Pause,
   Play,
-  Plus,
   RefreshCw,
-  ShieldAlert,
-  Users,
-  ZapOff,
 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { SettingsMenu } from './components/SettingsMenu.jsx'
@@ -25,7 +16,7 @@ const STAGES_CONFIG = [
   { id: 'dev', label: 'Development', type: 'process', stepType: 'manual', processTime: { min: 1, max: 8 }, waitTime: { min: 8, max: 8 }, actors: 5, percentComplete: 100 },
   { id: 'review', label: 'Code Review', type: 'process', stepType: 'manual', processTime: { min: 0.5, max: 2 }, waitTime: { min: 4, max: 8 }, actors: 2, percentComplete: 100 },
   { id: 'test', label: 'Testing', type: 'process', stepType: 'automated', processTime: { min: 0.5, max: 1 }, waitTime: { min: 0, max: 0 }, actors: Infinity, percentComplete: 100 },
-  { id: 'deploy', label: 'Deployment', type: 'process', stepType: 'batch', processTime: { min: 0.8, max: 1.2 }, waitTime: { min: 0, max: 0 }, actors: Infinity, cadence: 24, percentComplete: 100 },
+  { id: 'deploy', label: 'Deployment', type: 'process', stepType: 'automated', processTime: { min: 0.8, max: 1.2 }, waitTime: { min: 0, max: 0 }, actors: Infinity, percentComplete: 100 },
   { id: 'done', label: 'Production', type: 'sink', processTime: { min: 0, max: 0 }, waitTime: { min: 0, max: 0 } },
 ]
 
@@ -37,7 +28,7 @@ const HOURS_PER_TICK = 1 // Each tick = 1 simulated hour
 
 // --- Components ---
 
-const SimulationCanvas = ({ items, stageStats, stageMetrics, stages, problems, deploymentCountdown, batchCountdowns, onStageSettingsClick }) => {
+const SimulationCanvas = ({ items, stageStats, stageMetrics, stages, deploymentCountdown, batchCountdowns, onStageSettingsClick }) => {
   return (
     <div className="relative w-full h-80 bg-slate-900 rounded-xl overflow-hidden border border-slate-700 shadow-inner flex items-center px-2 select-none">
       {/* Connector Lines */}
@@ -62,7 +53,6 @@ const SimulationCanvas = ({ items, stageStats, stageMetrics, stages, problems, d
             stage={stage}
             stageStats={stageStats[stage.id]}
             metrics={stageMetrics[stage.id]}
-            problems={problems}
             deploymentCountdown={deploymentCountdown}
             batchCountdown={batchCountdowns?.[stage.id]}
             onSettingsClick={onStageSettingsClick}
@@ -77,26 +67,6 @@ const SimulationCanvas = ({ items, stageStats, stageMetrics, stages, problems, d
     </div>
   )
 }
-
-const ProblemToggle = ({ id, label, active, onClick, icon: Icon, description }) => (
-  <button
-    onClick={() => onClick(id)}
-    className={`
-      flex items-start p-3 rounded-lg border text-left transition-all duration-200 h-full
-      ${ active ? 'bg-red-900/20 border-red-500/50 shadow-[0_0_15px_rgba(239,68,68,0.1)]' : 'bg-slate-800 border-slate-700 hover:border-slate-500 hover:bg-slate-750' }
-    `}
-  >
-    <div className={`p-2 rounded-md mr-3 shrink-0 ${ active ? 'bg-red-500/20 text-red-400' : 'bg-slate-700 text-slate-400' }`}>
-      <Icon size={18} />
-    </div>
-    <div>
-      <h3 className={`font-semibold text-sm ${ active ? 'text-red-400' : 'text-slate-200' }`}>
-        {label}
-      </h3>
-      <p className="text-xs text-slate-400 mt-1 leading-tight">{description}</p>
-    </div>
-  </button>
-)
 
 const MetricCard = ({ label, value, unit, subtext, trend }) => (
   <div className="bg-slate-800 border border-slate-700 p-4 rounded-lg flex flex-col justify-between">
@@ -121,19 +91,6 @@ export default function ValueStreamSim() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [selectedStageId, setSelectedStageId] = useState(null);
   const [stages, setStages] = useState(STAGES_CONFIG);
-  const [problems, setProblems] = useState({
-    silos: false,
-    largeBatches: false,
-    codingErrors: false,
-    manualDeploy: false,
-    contextSwitching: false,
-    manualTesting: false,
-    unclearRequirements: false,
-    infrequentDeploy: false,
-    tooManyFeatures: false,
-    unstableProduction: false,
-  });
-
   const [deploymentSchedule, setDeploymentSchedule] = useState(24); // Default: 24 simulated hours
   const [deploymentCountdown, setDeploymentCountdown] = useState(24 / HOURS_PER_TICK); // Initialize to full schedule in ticks
   const [batchSize, setBatchSize] = useState(5); // Number of items created per batch
@@ -157,24 +114,11 @@ export default function ValueStreamSim() {
   });
 
   const dynamicStages = useMemo(() => {
-    const newStages = JSON.parse(JSON.stringify(stages));
-    const testStage = newStages.find(s => s.id === 'test');
-    if (testStage) {
-      if (problems.manualTesting) {
-        testStage.actors = 1;
-      } else {
-        testStage.actors = Infinity;
-      }
-    }
-    return newStages;
-  }, [stages, problems.manualTesting]);
+    return stages;
+  }, [stages]);
 
   const handleUpdateStage = (stageId, updatedStage) => {
     setStages(currentStages => currentStages.map(s => (s.id === stageId ? updatedStage : s)));
-  };
-
-  const toggleProblem = (id) => {
-    setProblems(prev => ({ ...prev, [id]: !prev[id] }));
   };
 
   const resetSimulation = () => {
@@ -184,25 +128,29 @@ export default function ValueStreamSim() {
       completedItems: [],
       startTime: Date.now(),
       history: stages.reduce((acc, stage) => ({ ...acc, [stage.id]: { totalProcess: 0, totalWait: 0, count: 0 } }), {}),
+      deploymentReleased: false,
+      // Initialize batch countdowns for all batch-type stages
+      batchCountdowns: stages.reduce((acc, stage) => {
+        if (stage.stepType === 'batch' && stage.cadence) {
+          acc[stage.id] = stage.cadence / HOURS_PER_TICK;
+        }
+        return acc;
+      }, {}),
     };
     setDeploymentCountdown(deploymentSchedule / HOURS_PER_TICK);
     setItems([]);
     setMetrics({ throughput: 0, wip: 0, cycleTime: 0 });
     setStageMetrics({});
+    setIsRunning(true); // Restart the simulation
   };
 
-  const updateSimulation = (now, currentStages, currentProblems, currentDeploymentCountdown = 0, currentBatchSize = 5) => {
+  const updateSimulation = (now, currentStages, currentBatchSize = 5) => {
     const s = stateRef.current;
 
     // Spawning logic - create batches of items at regular intervals
     // Base spawn rate: create a batch every 10 seconds (at 1x speed)
     const baseSpawnInterval = 10 * 1000; // 10 seconds
     let spawnInterval = baseSpawnInterval;
-
-    // Apply "Too Many Features" constraint (2x feature rate = half spawn interval)
-    if (currentProblems.tooManyFeatures) {
-      spawnInterval = spawnInterval / 2;
-    }
 
     if (now - s.lastSpawn > spawnInterval) {
       // Create a batch of feature items
@@ -332,7 +280,7 @@ export default function ValueStreamSim() {
             let intakeWaitComplete = false;
 
             // For batch steps, items wait until cadence countdown reaches 0
-            if (stageConfig.stepType === 'batch' && !currentProblems.infrequentDeploy) {
+            if (stageConfig.stepType === 'batch') {
                 // Initialize batch countdown if not exists (check for undefined/null, not falsy, since 0 is valid)
                 if (s.batchCountdowns[currentStageId] === undefined || s.batchCountdowns[currentStageId] === null) {
                     s.batchCountdowns[currentStageId] = (stageConfig.cadence || 24) / HOURS_PER_TICK;
@@ -342,25 +290,14 @@ export default function ValueStreamSim() {
                 if (s.batchCountdowns[currentStageId] <= 0) {
                     intakeWaitComplete = true;
                 }
-            } else if (currentProblems.infrequentDeploy && currentStageId === 'deploy') {
-                // Legacy infrequent deploy constraint (kept for backward compatibility)
-                if (currentDeploymentCountdown <= 0) {
-                    intakeWaitComplete = true;
-                }
             } else if (stageConfig.stepType === 'automated' || (stageConfig.waitTime && stageConfig.waitTime.min === 0 && stageConfig.waitTime.max === 0)) {
                 // Automated steps or steps with 0 wait time proceed immediately
                 intakeWaitComplete = true;
             } else if (stageConfig.waitTime) {
                 // Initialize target intake wait time if not set
                 if (!item.targetIntakeTicks) {
-                    let minWaitHours = stageConfig.waitTime.min;
-                    let maxWaitHours = stageConfig.waitTime.max;
-
-                    if (currentProblems.manualTesting && currentStageId === 'test') {
-                        minWaitHours = Math.max(minWaitHours, 8);
-                        maxWaitHours = Math.max(maxWaitHours, 8);
-                        if (maxWaitHours < minWaitHours) maxWaitHours = minWaitHours;
-                    }
+                    const minWaitHours = stageConfig.waitTime.min;
+                    const maxWaitHours = stageConfig.waitTime.max;
 
                     const waitTimeHours = minWaitHours + Math.random() * (maxWaitHours - minWaitHours);
                     // Convert simulated hours to ticks (e.g., 8 hours / 0.5 hours per tick = 16 ticks)
@@ -409,29 +346,10 @@ export default function ValueStreamSim() {
       } else if (item.state === 'processing') {
         item.targetX = stageBaseX + stageWidth * OFFSET_PROCESS;
 
-        let progressIncrement =
+        const progressIncrement =
           item.targetProcessTicks > 0 ? 100 / item.targetProcessTicks : 100;
 
-        let speedMultiplier = 1.0;
-        if (currentProblems.manualTesting && currentStageId === 'test')
-          speedMultiplier /= 10;
-        if (currentProblems.manualDeploy && currentStageId === 'deploy')
-          speedMultiplier /= 20;
-        if (currentProblems.contextSwitching) {
-          const load = stageLoad[item.stageIndex] || 1;
-          if (load > 3) speedMultiplier /= (load * 0.4);
-        }
-
-        item.progress += progressIncrement * speedMultiplier;
-
-        if (currentProblems.unclearRequirements && currentStageId === 'dev') {
-          if (Math.random() < 0.03) {
-            item.isUnclear = true;
-            item.state = 'returning';
-            item.returnTargetIndex = 1; // Refining Work (analysis)
-            return;
-          }
-        }
+        item.progress += progressIncrement;
 
         if (!isSink) {
           if (item.progress >= 100) {
@@ -465,34 +383,7 @@ export default function ValueStreamSim() {
             }
         }
 
-        // Apply additional constraints
-        if (canStartProcessing) {
-            if (currentProblems.silos && Math.random() < 0.15) canStartProcessing = false;
-
-            if (currentProblems.largeBatches && !item.isBug && !item.isUnclear) {
-                const batchSize = 5;
-                const peers = s.items.filter(
-                    i =>
-                        i.stageIndex === item.stageIndex &&
-                        i.state === 'waiting' &&
-                        !i.isBug &&
-                        !i.isUnclear
-                );
-                if (peers.length < batchSize) {
-                    canStartProcessing = false;
-                    item.inBatch = true;
-                } else {
-                    peers.forEach(p => (p.inBatch = false));
-                }
-            } else {
-                item.inBatch = false;
-            }
-
-            // Manual deploy gate - only applies when infrequent deploy is NOT active
-            if (currentProblems.manualDeploy && !currentProblems.infrequentDeploy && currentStageId === 'deploy') {
-                if (Math.random() > 0.02) canStartProcessing = false;
-            }
-        }
+        // No additional constraints to apply
 
         // Move to processing state when capacity becomes available
         if (canStartProcessing && !isSink) {
@@ -686,34 +577,16 @@ export default function ValueStreamSim() {
       // Adjust by simulation speed: faster speed = shorter interval
       const frameInterval = 1000 / simulationSpeed;
       if (now - lastTick > frameInterval) {
-        // Update simulation with current countdown value and batch size
-        updateSimulation(now, dynamicStages, problems, currentCountdown, batchSize);
+        // Update simulation with current batch size
+        updateSimulation(now, dynamicStages, batchSize);
 
-        // Then update countdown for next tick
-        if (problems.infrequentDeploy) {
-          // If countdown is already at 0 or below, reset for NEXT tick
-          if (currentCountdown <= 0) {
-            currentCountdown = deploymentSchedule / HOURS_PER_TICK;
-          } else {
-            // Decrement countdown
-            currentCountdown = currentCountdown - 1;
-          }
-          setDeploymentCountdown(currentCountdown);
-        }
         lastTick = now;
       }
       if (isRunning) animationFrameId = requestAnimationFrame(tick);
     };
     if (isRunning) animationFrameId = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(animationFrameId);
-  }, [isRunning, problems, dynamicStages, deploymentSchedule, deploymentCountdown, simulationSpeed, batchSize]);
-
-  // Initialize countdown when infrequent deploy is activated
-  useEffect(() => {
-    if (problems.infrequentDeploy && deploymentCountdown === 0) {
-      setDeploymentCountdown(deploymentSchedule / HOURS_PER_TICK);
-    }
-  }, [problems.infrequentDeploy, deploymentSchedule]);
+  }, [isRunning, dynamicStages, deploymentSchedule, deploymentCountdown, simulationSpeed, batchSize, productionDefectRate]);
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-200 font-sans p-4 md:p-8">
@@ -863,7 +736,6 @@ export default function ValueStreamSim() {
               stageStats={getStageStats()}
               stageMetrics={stageMetrics}
               stages={dynamicStages}
-              problems={problems}
               deploymentCountdown={deploymentCountdown}
               batchCountdowns={stateRef.current.batchCountdowns}
               onStageSettingsClick={(stageId) => {
@@ -873,96 +745,28 @@ export default function ValueStreamSim() {
             />
           </div>
         </div>
-        
-        <div className="space-y-4">
-          <div className="flex items-center gap-2 text-slate-300">
-            <Layers size={20} />
-            <h2 className="text-xl font-semibold">System Constraints</h2>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            <ProblemToggle
-              id="silos"
-              label="Siloed Teams"
-              active={problems.silos}
-              onClick={toggleProblem}
-              icon={Users}
-              description="Delays handoffs. Increases Wait Time (WT) between stages."
-            />
-            <ProblemToggle
-              id="largeBatches"
-              label="Large Batch Sizes"
-              active={problems.largeBatches}
-              onClick={toggleProblem}
-              icon={Layers}
-              description="Forces items to wait for peers before moving. Increases Wait Time."
-            />
-            <ProblemToggle
-              id="unclearRequirements"
-              label="Unclear Requirements"
-              active={problems.unclearRequirements}
-              onClick={toggleProblem}
-              icon={FileQuestion}
-              description="Ambiguity discovered in Development sends work back to Refining Work."
-            />
-            <ProblemToggle
-              id="codingErrors"
-              label="Coding Errors"
-              active={problems.codingErrors}
-              onClick={toggleProblem}
-              icon={ShieldAlert}
-              description="Coding errors discovered in Testing send work back to Development."
-            />
-            <ProblemToggle
-              id="manualTesting"
-              label="Manual Testing"
-              active={problems.manualTesting}
-              onClick={toggleProblem}
-              icon={ClipboardList}
-              description="Replaces automated tests with slow human verification. Increases Process Time."
-            />
-            <ProblemToggle
-              id="manualDeploy"
-              label="Manual Deploy Gate"
-              active={problems.manualDeploy}
-              onClick={toggleProblem}
-              icon={AlertTriangle}
-              description="Simulates a 'Change Review Board' window. Massive Wait Time increase."
-            />
-            <ProblemToggle
-              id="infrequentDeploy"
-              label="Infrequent Deploys"
-              active={problems.infrequentDeploy}
-              onClick={toggleProblem}
-              icon={Clock}
-              description={`Schedules deployments every ${deploymentSchedule} hours. Work waits for the next cycle.`}
-            />
-            <ProblemToggle
-              id="tooManyFeatures"
-              label="Too Many Features"
-              active={problems.tooManyFeatures}
-              onClick={toggleProblem}
-              icon={Plus}
-              description="Doubles feature generation rate. Increases WIP and system load."
-            />
-            <ProblemToggle
-              id="unstableProduction"
-              label="Unstable Production"
-              active={problems.unstableProduction}
-              onClick={toggleProblem}
-              icon={ZapOff}
-              description="Doubles defect generation rate. Increases rework and quality issues."
-            />
-          </div>
-        </div>
-
         <div className="flex flex-wrap gap-6 text-sm text-slate-400 bg-slate-800/50 p-4 rounded-lg border border-slate-700/50">
           <div className="flex items-center gap-2">
             <div className="w-3 h-3 rounded-full bg-blue-500"></div>
             <span>Feature</span>
           </div>
           <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded-full bg-red-500"></div>
+            <div className="w-3 h-3 rounded-full bg-red-500 flex items-center justify-center">
+              <div className="w-1 h-1 bg-white rounded-full" />
+            </div>
             <span>Defect</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="w-3 h-3 rounded-full bg-rose-600 flex items-center justify-center">
+              <span className="text-[6px] text-white font-bold">!</span>
+            </div>
+            <span>Production Defect</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="w-3 h-3 rounded-full bg-purple-600 flex items-center justify-center">
+              <span className="text-[6px] text-white font-bold">R</span>
+            </div>
+            <span>Rework</span>
           </div>
           <div className="flex items-center gap-2">
             <div className="w-3 h-3 rounded-full bg-orange-500 flex items-center justify-center">
@@ -973,6 +777,10 @@ export default function ValueStreamSim() {
           <div className="flex items-center gap-2">
             <div className="w-3 h-3 rounded-full bg-amber-500"></div>
             <span>Waiting / Blocked</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="w-3 h-3 rounded-full bg-purple-500"></div>
+            <span>Batch</span>
           </div>
           <div className="flex items-center gap-2 border-l border-slate-600 pl-4">
             <div className="w-16 h-8 border border-slate-600 rounded bg-slate-800 flex overflow-hidden">

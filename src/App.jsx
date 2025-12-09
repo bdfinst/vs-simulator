@@ -7,18 +7,11 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { SettingsMenu } from './components/SettingsMenu.jsx'
 import { Stage } from './components/Stage.jsx'
 import { WorkItem } from './components/WorkItem.jsx'
+import { SCENARIOS, getScenario, getScenarioList } from './scenarios.js'
 
 // --- Constants & Configuration ---
 
-const STAGES_CONFIG = [
-  { id: 'backlog', label: 'Backlog', type: 'queue', processTime: { min: 0, max: 0 }, waitTime: { min: 0, max: 0 } },
-  { id: 'analysis', label: 'Refining Work', type: 'process', stepType: 'manual', processTime: { min: 2, max: 4 }, waitTime: { min: 8, max: 8 }, actors: 2, percentComplete: 100 },
-  { id: 'dev', label: 'Development', type: 'process', stepType: 'manual', processTime: { min: 1, max: 8 }, waitTime: { min: 8, max: 8 }, actors: 5, percentComplete: 100 },
-  { id: 'review', label: 'Code Review', type: 'process', stepType: 'manual', processTime: { min: 0.5, max: 2 }, waitTime: { min: 4, max: 8 }, actors: 2, percentComplete: 100 },
-  { id: 'test', label: 'Testing', type: 'process', stepType: 'automated', processTime: { min: 0.5, max: 1 }, waitTime: { min: 0, max: 0 }, actors: Infinity, percentComplete: 100 },
-  { id: 'deploy', label: 'Deployment', type: 'process', stepType: 'automated', processTime: { min: 0.8, max: 1.2 }, waitTime: { min: 0, max: 0 }, actors: Infinity, percentComplete: 100 },
-  { id: 'done', label: 'Production', type: 'sink', processTime: { min: 0, max: 0 }, waitTime: { min: 0, max: 0 } },
-]
+const STAGES_CONFIG = SCENARIOS.standard.stages
 
 const FPS = 30 // Animation frames per second (real time)
 const HOURS_PER_TICK = 1 // Each tick = 1 simulated hour
@@ -29,41 +22,72 @@ const HOURS_PER_TICK = 1 // Each tick = 1 simulated hour
 // --- Components ---
 
 const SimulationCanvas = ({ items, stageStats, stageMetrics, stages, deploymentCountdown, batchCountdowns, onStageSettingsClick }) => {
-  return (
-    <div className="relative w-full h-80 bg-slate-900 rounded-xl overflow-hidden border border-slate-700 shadow-inner flex items-center px-2 select-none">
-      {/* Connector Lines */}
-      <div className="absolute top-1/2 left-4 right-4 h-1 bg-slate-800 -translate-y-1/2 z-0" />
+  // Separate stages into normal flow and exception flow
+  const normalStages = stages.filter(stage => !stage.isExceptionFlow)
+  const exceptionStages = stages.filter(stage => stage.isExceptionFlow)
+  const hasExceptionFlow = exceptionStages.length > 0
 
-      {/* Intake Arrow */}
-      <div className="absolute left-2 top-1/2 -translate-y-1/2 z-10 flex items-center">
-        <div className="flex flex-col items-center">
-          <span className="text-[8px] text-slate-500 uppercase mb-1">Intake</span>
-          <div className="flex items-center">
-            <div className="w-8 h-0.5 bg-blue-400"></div>
-            <div className="w-0 h-0 border-l-[6px] border-l-blue-400 border-t-[4px] border-t-transparent border-b-[4px] border-b-transparent"></div>
+  return (
+    <div className={`relative w-full ${hasExceptionFlow ? 'h-[450px]' : 'h-80'} bg-slate-900 rounded-xl overflow-hidden border border-slate-700 shadow-inner flex flex-col justify-center px-2 select-none`}>
+      {/* Exception Flow - Top Row (Red) */}
+      {hasExceptionFlow && (
+        <div className="relative z-10 w-full mb-4">
+          <div className="flex items-center gap-2 mb-2 pl-2">
+            <span className="text-[10px] font-bold text-red-400 uppercase tracking-wider">Exception Flow</span>
+            <div className="flex-1 h-px bg-red-500/30" />
+          </div>
+          <div className="relative flex justify-start gap-4 px-2">
+            {exceptionStages.map((stage) => (
+              <Stage
+                key={stage.id}
+                stage={stage}
+                stageStats={stageStats[stage.id]}
+                metrics={stageMetrics[stage.id]}
+                deploymentCountdown={deploymentCountdown}
+                batchCountdown={batchCountdowns?.[stage.id]}
+                onSettingsClick={onStageSettingsClick}
+              />
+            ))}
           </div>
         </div>
-      </div>
+      )}
 
-      {/* Stages */}
-      <div className="relative z-10 w-full flex justify-between px-2">
-        {stages.map((stage) => (
-          <Stage
-            key={stage.id}
-            stage={stage}
-            stageStats={stageStats[stage.id]}
-            metrics={stageMetrics[stage.id]}
-            deploymentCountdown={deploymentCountdown}
-            batchCountdown={batchCountdowns?.[stage.id]}
-            onSettingsClick={onStageSettingsClick}
-          />
+      {/* Normal Flow - Main Row */}
+      <div className="relative flex-1 flex items-center">
+        {/* Connector Lines */}
+        <div className="absolute top-1/2 left-4 right-4 h-1 bg-slate-800 -translate-y-1/2 z-0" />
+
+        {/* Intake Arrow */}
+        <div className="absolute left-2 top-1/2 -translate-y-1/2 z-10 flex items-center">
+          <div className="flex flex-col items-center">
+            <span className="text-[8px] text-slate-500 uppercase mb-1">Intake</span>
+            <div className="flex items-center">
+              <div className="w-8 h-0.5 bg-blue-400"></div>
+              <div className="w-0 h-0 border-l-[6px] border-l-blue-400 border-t-[4px] border-t-transparent border-b-[4px] border-b-transparent"></div>
+            </div>
+          </div>
+        </div>
+
+        {/* Stages */}
+        <div className="relative z-10 w-full flex justify-between px-2">
+          {normalStages.map((stage) => (
+            <Stage
+              key={stage.id}
+              stage={stage}
+              stageStats={stageStats[stage.id]}
+              metrics={stageMetrics[stage.id]}
+              deploymentCountdown={deploymentCountdown}
+              batchCountdown={batchCountdowns?.[stage.id]}
+              onSettingsClick={onStageSettingsClick}
+            />
+          ))}
+        </div>
+
+        {/* Work Items */}
+        {items.map(item => (
+          <WorkItem key={item.id} item={item} stages={stages} />
         ))}
       </div>
-
-      {/* Work Items */}
-      {items.map(item => (
-        <WorkItem key={item.id} item={item} stages={stages} />
-      ))}
     </div>
   )
 }
@@ -84,6 +108,7 @@ const MetricCard = ({ label, value, unit, subtext, trend }) => (
 )
 
 export default function ValueStreamSim() {
+  const [currentScenario, setCurrentScenario] = useState('standard');
   const [isRunning, setIsRunning] = useState(true);
   const [items, setItems] = useState([]);
   const [metrics, setMetrics] = useState({ throughput: 0, wip: 0, cycleTime: 0, changeFail: 0, deployFrequency: 0 });
@@ -148,6 +173,15 @@ export default function ValueStreamSim() {
     setMetrics({ throughput: 0, wip: 0, cycleTime: 0, changeFail: 0, deployFrequency: 0 });
     setStageMetrics({});
     setIsRunning(true); // Restart the simulation
+  };
+
+  const handleScenarioChange = (scenarioId) => {
+    const scenario = getScenario(scenarioId);
+    setCurrentScenario(scenarioId);
+    setStages(scenario.stages);
+    setDeploymentSchedule(scenario.deploymentSchedule);
+    // Reset simulation with new scenario
+    resetSimulation();
   };
 
   const updateSimulation = (now, currentStages, currentBatchSize = 5) => {
@@ -673,6 +707,32 @@ export default function ValueStreamSim() {
               <RefreshCw size={18} />
               Reset
             </button>
+          </div>
+        </div>
+
+        {/* Scenario Selector */}
+        <div className="bg-slate-800/50 p-4 rounded-lg border border-slate-700">
+          <div className="flex flex-col md:flex-row md:items-center gap-4">
+            <div className="flex-1">
+              <label htmlFor="scenario-select" className="block text-sm font-medium text-slate-300 mb-2">
+                Workflow Scenario
+              </label>
+              <select
+                id="scenario-select"
+                value={currentScenario}
+                onChange={(e) => handleScenarioChange(e.target.value)}
+                className="w-full bg-slate-700 border border-slate-600 text-white rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                {getScenarioList().map(scenario => (
+                  <option key={scenario.id} value={scenario.id}>
+                    {scenario.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="flex-1 text-sm text-slate-400">
+              {getScenario(currentScenario).description}
+            </div>
           </div>
         </div>
 

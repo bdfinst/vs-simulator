@@ -40,9 +40,14 @@ export const Stage = ({
     }
   }
 
-  // Get background color based on step type
+  // Get background color based on step type and exception flow
   const getStepTypeBackground = () => {
     if (isSink) return 'border-green-500/50 bg-green-900/10'
+
+    // Exception flow stages get red color scheme
+    if (stage.isExceptionFlow) {
+      return 'border-red-500/50 bg-red-900/20'
+    }
 
     switch (stage.stepType) {
       case 'manual':

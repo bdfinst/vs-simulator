@@ -15,15 +15,18 @@ test.describe('Basic Simulation Flow', () => {
   });
 
   test('should display all workflow stages', async ({ page }) => {
-    // Verify stages by their user-facing labels
+    // Verify stages by their user-facing labels in the simulation canvas
     const expectedStages = ['Backlog', 'Refining Work', 'Development', 'Code Review', 'Testing'];
 
     for (const stage of expectedStages) {
-      await expect(page.getByText(stage, { exact: false }).first()).toBeVisible();
+      // Look specifically for stage labels (uppercase, bold text) not scenario names in dropdown
+      const stageLabel = page.locator('.uppercase.tracking-wider', { hasText: stage }).first();
+      await expect(stageLabel).toBeVisible();
     }
 
     // Deployment might be labeled differently (Deploy vs Deployment)
-    await expect(page.getByText(/deploy/i).first()).toBeVisible();
+    const deployStage = page.locator('.uppercase.tracking-wider', { hasText: /deploy/i }).first();
+    await expect(deployStage).toBeVisible();
   });
 
   test('should pause and resume simulation', async ({ page }) => {

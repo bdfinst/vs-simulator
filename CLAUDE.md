@@ -6,8 +6,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This is a **Value Stream Simulator** - an interactive React application that visualizes software delivery workflows, queues, bottlenecks, and rework loops in real-time. It demonstrates principles from Theory of Constraints, Lean, and DevOps.
 
-The simulator models work items (features and defects) flowing through seven stages:
-- **Intake** (entry queue)
+The simulator supports **multiple workflow scenarios** that model different software delivery approaches:
+- **Standard Agile Flow** (default): Typical agile workflow with continuous deployment
+- **CAB Approval Flow**: Traditional workflow with Change Advisory Board approval every 2 days
+- **Waterfall Model**: Traditional waterfall with long phases and quarterly releases
+- **Dual Code Review**: Workflow with both peer review and mandatory tech lead review (demonstrates bottleneck)
+- **External QA Team**: Separate QA team with triage process and 30% defect rate (demonstrates handoff costs and rework)
+- **Elite DevOps**: High-performing team with automated pipeline and multiple deployments per day
+
+Each scenario demonstrates how different processes impact metrics like WIP, cycle time, and deployment frequency. See SCENARIOS.md for detailed documentation.
+
+Standard Agile Flow stages (default):
 - **Backlog** (queue)
 - **Refining Work** (analysis/planning)
 - **Development** (implementation)
@@ -16,7 +25,7 @@ The simulator models work items (features and defects) flowing through seven sta
 - **Deployment** (release)
 - **Production** (completed work sink)
 
-Users can activate system constraints (Siloed Teams, Large Batches, Coding Errors, Manual Testing, etc.) to observe their impact on metrics like WIP, throughput, and cycle time.
+Users can switch scenarios via the UI dropdown and observe how different workflows affect flow metrics.
 
 ## Commands
 
@@ -37,6 +46,39 @@ npm test:coverage  # Generate coverage report
 Tests use Vitest + Testing Library with fake timers to simulate the animation frame loop.
 
 ## Architecture
+
+### Workflow Scenarios
+
+**Scenario System** (src/scenarios.js):
+The simulator supports multiple predefined workflow scenarios that demonstrate different delivery approaches. Each scenario defines:
+- Complete stage configuration (types, labels, process times, wait times, actors)
+- Deployment schedule
+- Batch/scheduled release gates (CAB approval, quarterly releases, etc.)
+
+**Available Scenarios**:
+1. **Standard Agile** (`standard`): Default workflow with continuous deployment
+2. **CAB Approval** (`cabApproval`): Adds CAB stage with 48-hour batch cadence after Testing
+3. **Waterfall** (`waterfall`): Long phases with quarterly (2160h) batch releases
+4. **Dual Code Review** (`dualReview`): Both peer review (3 reviewers) and tech lead review (1 reviewer - bottleneck)
+5. **External QA Team** (`externalQA`): Separate QA with handoff delays, 30% defect rate, and triage process
+6. **Elite DevOps** (`devops`): Streamlined pipeline with 15-minute deployment cadence
+
+**Scenario Implementation**:
+- Scenarios defined in `SCENARIOS` object in src/scenarios.js
+- UI dropdown allows users to switch scenarios
+- Changing scenario triggers `handleScenarioChange()` which:
+  - Loads new stage configuration
+  - Updates deployment schedule
+  - Calls `resetSimulation()` to clear state
+- See SCENARIOS.md for full documentation
+
+**Batch/Scheduled Stages**:
+Stages with `stepType: 'batch'` implement scheduled releases (e.g., CAB approval, quarterly releases):
+- Items queue at the stage until countdown reaches 0
+- `cadence` property defines hours between releases (e.g., 48 for CAB, 2160 for quarterly)
+- When countdown hits 0, all queued items process simultaneously and countdown resets
+- Countdown displayed on stage: "Next release: Xh"
+- Implementation in src/App.jsx lines 292-302 (batch countdown logic)
 
 ### Core Simulation Engine
 

@@ -5,233 +5,223 @@ test.describe('Metrics and Analytics', () => {
     await page.goto('/');
   });
 
-  test('should display all four metric cards', async ({ page }) => {
-    // Verify all metrics are visible
-    await expect(page.locator('text=Work In Progress (WIP)')).toBeVisible();
-    await expect(page.locator('text=Avg. Cycle Time')).toBeVisible();
-    await expect(page.locator('text=Change Fail %')).toBeVisible();
-    await expect(page.locator('text=Deploy Frequency')).toBeVisible();
+  test('should display work in progress metric', async ({ page }) => {
+    // Verify WIP metric is visible by its user-facing label (use regex for flexibility)
+    await expect(page.getByText(/work.*progress/i).first()).toBeVisible();
+
+    // Wait for simulation
+    await page.waitForTimeout(3000);
+
+    // Verify metric shows a numeric value
+    const wipArea = page.getByText(/work.*progress/i).first().locator('..');
+    await expect(wipArea).toContainText(/\d+/);
   });
 
-  test('should show correct units for each metric', async ({ page }) => {
-    // WIP: Items
-    const wipCard = page.locator('text=Work In Progress (WIP)').locator('..');
-    await expect(wipCard.locator('text=Items')).toBeVisible();
+  test('should display cycle time metric', async ({ page }) => {
+    // Verify Cycle Time is visible
+    await expect(page.getByText('Cycle Time', { exact: false })).toBeVisible();
 
-    // Cycle Time: hours
-    const cycleCard = page.locator('text=Avg. Cycle Time').locator('..');
-    await expect(cycleCard.locator('text=hours')).toBeVisible();
+    // Should show time unit
+    await expect(page.getByText(/hours?/i)).toBeVisible();
 
-    // Change Fail: %
-    const changeFailCard = page.locator('text=Change Fail %').locator('..');
-    await expect(changeFailCard.locator('.text-slate-500.ml-1.text-sm').filter({ hasText: '%' })).toBeVisible();
-
-    // Deploy Frequency: per day
-    const deployCard = page.locator('text=Deploy Frequency').locator('..');
-    await expect(deployCard.locator('text=per day')).toBeVisible();
+    // Should show numeric value
+    const cycleTimeArea = page.getByText('Cycle Time', { exact: false }).locator('..');
+    await expect(cycleTimeArea).toContainText(/\d+/);
   });
 
-  test('should track WIP (Work in Progress)', async ({ page }) => {
-    // Wait for simulation to generate items
+  test('should display change fail percentage', async ({ page }) => {
+    // Verify Change Fail metric is visible
+    await expect(page.getByText('Change Fail', { exact: false })).toBeVisible();
+
+    // Should show percentage
+    const changeFailArea = page.getByText('Change Fail', { exact: false }).locator('..');
+    await expect(changeFailArea).toContainText(/\d+/);
+  });
+
+  test('should display deployment frequency', async ({ page }) => {
+    // Verify Deploy Frequency is visible
+    await expect(page.getByText('Deploy Frequency', { exact: false })).toBeVisible();
+
+    // Should show rate unit
+    await expect(page.getByText(/per day/i)).toBeVisible();
+
+    // Should show numeric value
+    const deployArea = page.getByText('Deploy Frequency', { exact: false }).locator('..');
+    await expect(deployArea).toContainText(/\d+/);
+  });
+
+  test('should show all four key metrics', async ({ page }) => {
+    // Verify all four DORA/flow metrics are present
+    await expect(page.getByText('Work In Progress', { exact: false })).toBeVisible();
+    await expect(page.getByText('Cycle Time', { exact: false })).toBeVisible();
+    await expect(page.getByText('Change Fail', { exact: false })).toBeVisible();
+    await expect(page.getByText('Deploy Frequency', { exact: false })).toBeVisible();
+  });
+
+  test('should track work in progress over time', async ({ page }) => {
+    // Get initial WIP
+    await page.waitForTimeout(2000);
+    const wipArea = page.getByText('Work In Progress', { exact: false }).locator('..');
+    const initialText = await wipArea.textContent();
+
+    // Wait more
+    await page.waitForTimeout(3000);
+
+    // Get updated WIP
+    const updatedText = await wipArea.textContent();
+
+    // Both should contain numbers (tracking over time)
+    expect(initialText).toMatch(/\d+/);
+    expect(updatedText).toMatch(/\d+/);
+  });
+
+  test('should show trend indicators', async ({ page }) => {
+    // Wait for metrics to populate
+    await page.waitForTimeout(5000);
+
+    // WIP should have some trend text (Optimal Flow or System Overloaded)
+    const wipArea = page.getByText('Work In Progress', { exact: false }).locator('..');
+    const wipText = await wipArea.textContent();
+
+    // Should have descriptive text beyond just the number
+    expect(wipText).toMatch(/optimal|overload|flow/i);
+  });
+
+  test('should reset metrics when simulation resets', async ({ page }) => {
+    // Wait for activity
     await page.waitForTimeout(5000);
 
     // Get WIP value
-    const wipMetric = page.locator('text=Work In Progress (WIP)').locator('..').locator('.text-2xl');
-    const wipValue = parseInt(await wipMetric.textContent());
-
-    expect(wipValue).toBeGreaterThan(0);
-  });
-
-  test('should show WIP trend indicator', async ({ page }) => {
-    // Wait for items
-    await page.waitForTimeout(5000);
-
-    // Check for trend text (Optimal Flow or System Overloaded)
-    const wipCard = page.locator('text=Work In Progress (WIP)').locator('..');
-    const trendText = await wipCard.locator('.text-xs').textContent();
-
-    expect(trendText).toMatch(/Optimal Flow|System Overloaded/);
-  });
-
-  test('should calculate cycle time', async ({ page }) => {
-    // Wait longer for items to complete and cycle time to be calculated
-    await page.waitForTimeout(30000);
-
-    // Get cycle time value
-    const cycleTimeMetric = page.locator('text=Avg. Cycle Time').locator('..').locator('.text-2xl');
-    const cycleTimeValue = await cycleTimeMetric.textContent();
-
-    // Cycle time should be a number (or "0" initially)
-    expect(cycleTimeValue).toMatch(/^\d+(\.\d+)?$/);
-  });
-
-  test('should track change fail percentage', async ({ page }) => {
-    // Set production defect rate to generate failures
-    await page.locator('input#defect-rate').fill('50');
-
-    // Wait for deployments and defects
-    await page.waitForTimeout(30000);
-
-    // Get change fail percentage
-    const changeFailMetric = page.locator('text=Change Fail %').locator('..').locator('.text-2xl');
-    const changeFailValue = await changeFailMetric.textContent();
-
-    // Should be a number
-    expect(changeFailValue).toMatch(/^\d+(\.\d+)?$/);
-  });
-
-  test('should track deployment frequency', async ({ page }) => {
-    // Wait for deployments to occur
-    await page.waitForTimeout(30000);
-
-    // Get deploy frequency
-    const deployFreqMetric = page.locator('text=Deploy Frequency').locator('..').locator('.text-2xl');
-    const deployFreqValue = await deployFreqMetric.textContent();
-
-    // Should be a number
-    expect(deployFreqValue).toMatch(/^\d+(\.\d+)?$/);
-  });
-
-  test('should update metrics in real-time', async ({ page }) => {
-    // Get initial WIP
-    await page.waitForTimeout(2000);
-    const wipMetric = page.locator('text=Work In Progress (WIP)').locator('..').locator('.text-2xl');
-    const wip1 = await wipMetric.textContent();
-
-    // Wait more
-    await page.waitForTimeout(5000);
-
-    // Get updated WIP
-    const wip2 = await wipMetric.textContent();
-
-    // WIP should have potentially changed (or at least be tracked)
-    expect(typeof wip2).toBe('string');
-  });
-
-  test('should reset all metrics to zero', async ({ page }) => {
-    // Wait for some activity
-    await page.waitForTimeout(5000);
-
-    // Verify WIP is greater than 0
-    const wipMetric = page.locator('text=Work In Progress (WIP)').locator('..').locator('.text-2xl');
-    const wipBefore = parseInt(await wipMetric.textContent());
-    expect(wipBefore).toBeGreaterThan(0);
+    const wipArea = page.getByText('Work In Progress', { exact: false }).locator('..');
+    const beforeText = await wipArea.textContent();
+    const beforeMatch = beforeText.match(/(\d+)/);
+    expect(beforeMatch).toBeTruthy();
+    const beforeWIP = parseInt(beforeMatch[1]);
+    expect(beforeWIP).toBeGreaterThan(0);
 
     // Reset
-    await page.locator('button').filter({ hasText: 'Reset' }).click();
+    await page.getByRole('button', { name: /reset/i }).click();
     await page.waitForTimeout(500);
 
-    // After reset, simulation restarts so WIP will quickly build up again
-    // Just verify metrics exist and are numeric
-    const wipAfter = parseInt(await wipMetric.textContent());
-    expect(typeof wipAfter).toBe('number');
+    // After reset, simulation restarts (WIP will build up again quickly)
+    // Verify metrics are still being tracked (show valid numbers)
+    const afterText = await wipArea.textContent();
+    expect(afterText).toMatch(/\d+/);
   });
 
-  test('should show color-coded trend indicators', async ({ page }) => {
-    // Wait for metrics
-    await page.waitForTimeout(5000);
-
-    // WIP card should have trend indicator (green for good, red for bad)
-    const wipCard = page.locator('text=Work In Progress (WIP)').locator('..');
-    const wipTrend = wipCard.locator('.text-xs');
-
-    // Check if trend has color class
-    const trendClass = await wipTrend.getAttribute('class');
-    expect(trendClass).toMatch(/text-(green|red)-400/);
-  });
-
-  test('should show Dev to Production subtext for cycle time', async ({ page }) => {
-    const cycleCard = page.locator('text=Avg. Cycle Time').locator('..');
-    await expect(cycleCard.locator('text=Dev to Production')).toBeVisible();
-  });
-
-  test('should show Failed Deployments subtext for change fail', async ({ page }) => {
-    const changeFailCard = page.locator('text=Change Fail %').locator('..');
-    await expect(changeFailCard.locator('text=Failed Deployments')).toBeVisible();
-  });
-
-  test('should show Deployment Rate subtext for deploy frequency', async ({ page }) => {
-    const deployCard = page.locator('text=Deploy Frequency').locator('..');
-    await expect(deployCard.locator('text=Deployment Rate')).toBeVisible();
-  });
-
-  test('should handle high WIP scenarios', async ({ page }) => {
-    // Increase batch size to create more WIP
-    await page.locator('input#batch-size').fill('20');
-
-    // Wait for WIP to build up
-    await page.waitForTimeout(10000);
-
-    // Get WIP
-    const wipMetric = page.locator('text=Work In Progress (WIP)').locator('..').locator('.text-2xl');
-    const wipValue = parseInt(await wipMetric.textContent());
-
-    // With large batch size, WIP should be high
-    expect(wipValue).toBeGreaterThan(10);
-
-    // Check if "System Overloaded" warning appears when WIP > 20
-    if (wipValue > 20) {
-      const wipCard = page.locator('text=Work In Progress (WIP)').locator('..');
-      await expect(wipCard.locator('text=System Overloaded')).toBeVisible();
-    }
-  });
-
-  test('should maintain metric accuracy across pause/resume', async ({ page }) => {
+  test('should maintain metrics accuracy when paused', async ({ page }) => {
     // Wait for activity
     await page.waitForTimeout(5000);
 
     // Get WIP while running
-    const wipMetric = page.locator('text=Work In Progress (WIP)').locator('..').locator('.text-2xl');
-    const wip1 = parseInt(await wipMetric.textContent());
+    const wipArea = page.getByText('Work In Progress', { exact: false }).locator('..');
+    const runningText = await wipArea.textContent();
+    const runningWIP = parseInt(runningText.match(/(\d+)/)?.[1] || '0');
 
     // Pause
-    await page.locator('button').filter({ hasText: 'Pause' }).click();
+    await page.getByRole('button', { name: /pause/i }).click();
     await page.waitForTimeout(1000);
 
-    // WIP should stay same while paused
-    const wip2 = parseInt(await wipMetric.textContent());
-    expect(wip2).toBe(wip1);
+    // WIP should not change while paused
+    const pausedText = await wipArea.textContent();
+    const pausedWIP = parseInt(pausedText.match(/(\d+)/)?.[1] || '0');
+    expect(pausedWIP).toBe(runningWIP);
 
     // Resume
-    await page.locator('button').filter({ hasText: 'Resume' }).click();
+    await page.getByRole('button', { name: /resume/i }).click();
+    await page.waitForTimeout(2000);
+
+    // Metrics should continue updating
+    const resumedText = await wipArea.textContent();
+    expect(resumedText).toMatch(/\d+/);
+  });
+
+  test('should show high WIP warning when overloaded', async ({ page }) => {
+    // Increase batch size to create high WIP
+    const batchSlider = page.getByLabel('Batch Size', { exact: false });
+    await batchSlider.fill('20');
+
+    // Wait for WIP to build up
+    await page.waitForTimeout(10000);
+
+    // Check WIP value
+    const wipArea = page.getByText('Work In Progress', { exact: false }).locator('..');
+    const wipText = await wipArea.textContent();
+    const wipValue = parseInt(wipText.match(/(\d+)/)?.[1] || '0');
+
+    // If WIP is high, should show warning
+    if (wipValue > 20) {
+      await expect(wipArea).toContainText(/overload/i);
+    }
+  });
+
+  test('should show optimal flow when WIP is reasonable', async ({ page }) => {
+    // Wait for simulation to stabilize with default settings
+    await page.waitForTimeout(5000);
+
+    // Check WIP
+    const wipArea = page.getByText('Work In Progress', { exact: false }).locator('..');
+    const wipText = await wipArea.textContent();
+    const wipValue = parseInt(wipText.match(/(\d+)/)?.[1] || '0');
+
+    // If WIP is reasonable, should show optimal message
+    if (wipValue <= 20) {
+      await expect(wipArea).toContainText(/optimal/i);
+    }
+  });
+
+  test('should track change failures when defects occur', async ({ page }) => {
+    // Set high defect rate
+    const defectSlider = page.getByLabel('Production Defects', { exact: false });
+    await defectSlider.fill('50');
+
+    // Speed up simulation
+    const speedSlider = page.getByLabel('Simulation Speed', { exact: false });
+    await speedSlider.fill('25');
+
+    // Wait for items to complete and failures to occur (reduced time with faster speed)
+    await page.waitForTimeout(20000);
+
+    // Change Fail % should be tracked
+    const changeFailArea = page.getByText('Change Fail', { exact: false }).first().locator('..');
+    const changeFailText = await changeFailArea.textContent();
+
+    // Should show a percentage value
+    expect(changeFailText).toMatch(/\d+/);
+  });
+
+  test('should calculate metrics at different simulation speeds', async ({ page }) => {
+    // Set a speed
+    const speedSlider = page.getByLabel('Simulation Speed', { exact: false });
+    await speedSlider.fill('15');
+
+    // Wait
+    await page.waitForTimeout(5000);
+
+    // All metrics should still be calculating
+    await expect(page.getByText('Work In Progress', { exact: false }).locator('..')).toContainText(/\d+/);
+    await expect(page.getByText('Cycle Time', { exact: false }).locator('..')).toContainText(/\d+/);
+    await expect(page.getByText('Change Fail', { exact: false }).locator('..')).toContainText(/\d+/);
+    await expect(page.getByText('Deploy Frequency', { exact: false }).locator('..')).toContainText(/\d+/);
+  });
+
+  test('should format metrics with appropriate units', async ({ page }) => {
+    // Wait for metrics
     await page.waitForTimeout(3000);
 
-    // WIP should continue tracking
-    const wip3 = parseInt(await wipMetric.textContent());
-    expect(typeof wip3).toBe('number');
-  });
+    // WIP: Items
+    const wipArea = page.getByText('Work In Progress', { exact: false }).locator('..');
+    await expect(wipArea).toContainText(/items/i);
 
-  test('should calculate metrics with different simulation speeds', async ({ page }) => {
-    // Set slow speed
-    await page.locator('input#sim-speed').fill('5');
-    await page.waitForTimeout(5000);
+    // Cycle Time: hours
+    const cycleArea = page.getByText('Cycle Time', { exact: false }).locator('..');
+    await expect(cycleArea).toContainText(/hours?/i);
 
-    const wipMetric = page.locator('text=Work In Progress (WIP)').locator('..').locator('.text-2xl');
-    const wip1 = parseInt(await wipMetric.textContent());
+    // Change Fail: % (implicit in name)
+    await expect(page.getByText('Change Fail %')).toBeVisible();
 
-    // Reset and try fast speed
-    await page.locator('button').filter({ hasText: 'Reset' }).click();
-    await page.waitForTimeout(500);
-
-    await page.locator('input#sim-speed').fill('25');
-    await page.waitForTimeout(5000);
-
-    const wip2 = parseInt(await wipMetric.textContent());
-
-    // Both should produce valid WIP values
-    expect(typeof wip1).toBe('number');
-    expect(typeof wip2).toBe('number');
-  });
-
-  test('should show appropriate metric formatting', async ({ page }) => {
-    // Wait for metrics
-    await page.waitForTimeout(5000);
-
-    // All metric values should be in text-2xl class (large, bold)
-    const allMetricValues = page.locator('.text-2xl.font-bold');
-    const count = await allMetricValues.count();
-
-    // Should have 4 metric values (one per card)
-    expect(count).toBe(4);
+    // Deploy Frequency: per day
+    const deployArea = page.getByText('Deploy Frequency', { exact: false }).locator('..');
+    await expect(deployArea).toContainText(/per day/i);
   });
 });

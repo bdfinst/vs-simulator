@@ -1,24 +1,27 @@
 import {
   AlertTriangle,
-  ArrowLeft,
   ClipboardList,
   Clock,
   FileQuestion,
   Layers,
   Pause,
   Play,
+  Plus,
   RefreshCw,
   Settings,
   ShieldAlert,
   Users,
-  Zap,
+  ZapOff,
 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { SettingsMenu } from './components/SettingsMenu.jsx'
+import { Stage } from './components/Stage.jsx'
+import { WorkItem } from './components/WorkItem.jsx'
 
 // --- Constants & Configuration ---
 
 const STAGES_CONFIG = [
+  { id: 'intake', label: 'Intake', type: 'queue', processTime: { min: 0, max: 0 }, waitTime: { min: 0, max: 0 } },
   { id: 'backlog', label: 'Backlog', type: 'queue', processTime: { min: 0, max: 0 }, waitTime: { min: 0, max: 0 } },
   { id: 'analysis', label: 'Change Definition', type: 'process', processTime: { min: 2, max: 4 }, waitTime: { min: 8, max: 8 }, actors: 2 },
   { id: 'dev', label: 'Development', type: 'process', processTime: { min: 1, max: 8 }, waitTime: { min: 8, max: 8 }, actors: 5 },
@@ -26,14 +29,6 @@ const STAGES_CONFIG = [
   { id: 'deploy', label: 'Deployment', type: 'process', processTime: { min: 0.8, max: 1.2 }, waitTime: { min: 0, max: 0 }, actors: Infinity },
   { id: 'done', label: 'Production', type: 'sink', processTime: { min: 0, max: 0 }, waitTime: { min: 0, max: 0 } },
 ]
-
-const ITEM_COLORS = {
-  normal: 'bg-blue-500',
-  bug: 'bg-red-500',
-  blocked: 'bg-amber-500',
-  batch: 'bg-purple-500',
-  rework: 'bg-orange-500',
-}
 
 const FPS = 30
 const HOURS_PER_TICK = 0.5 // Scale: 2 ticks = 1 hour of simulated time
@@ -48,125 +43,21 @@ const SimulationCanvas = ({ items, stageStats, stageMetrics, stages, problems, d
 
       {/* Stages */}
       <div className="relative z-10 w-full flex justify-between px-2">
-        {stages.map((stage) => {
-          const isSink = stage.type === 'sink'
-          const queueCount = stageStats[stage.id]?.queued || 0
-          const processCount = stageStats[stage.id]?.processing || 0
-          const waitCount = stageStats[stage.id]?.waiting || 0
-          const totalCount = queueCount + processCount + waitCount
-
-          const metrics = stageMetrics[stage.id] || { avgProcess: 0, avgWait: 0 };
-
-          return (
-            <div
-              key={stage.id}
-              className="flex flex-col items-center group relative w-32"
-            >
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">
-                {stage.label}
-              </span>
-              <div
-                className={`
-                  w-full h-32 rounded-lg border-2 flex flex-row overflow-hidden transition-colors duration-500 relative
-                  ${ isSink ? 'border-green-500/50 bg-green-900/10' : 'border-slate-600 bg-slate-800/90' }
-                `}
-              >
-                {stage.id === 'deploy' && problems.infrequentDeploy && (
-                  <div className="absolute inset-0 flex flex-col items-center justify-center">
-                    <span className="text-xs text-slate-400">Next Release In</span>
-                    <span className="text-2xl font-bold text-purple-400">
-                      {Math.round(deploymentCountdown * HOURS_PER_TICK)}h
-                    </span>
-                  </div>
-                )}
-                {!isSink && (
-                  <>
-                    {/* Zone 1: Input Queue */}
-                    <div className="w-1/3 border-r border-slate-700/50 bg-black/20 flex flex-col justify-end items-center pb-1">
-                      <span className="text-[8px] text-slate-500 uppercase rotate-180 writing-vertical-rl mb-2 opacity-50">
-                        Queue
-                      </span>
-                    </div>
-                    {/* Zone 2: Wait (comes before processing) */}
-                    <div className="w-1/3 border-r border-slate-700/50 bg-black/20 flex flex-col justify-end items-center pb-1">
-                      {waitCount > 0 && (
-                        <span className="text-[8px] text-amber-500 font-bold mb-1">
-                          WAIT
-                        </span>
-                      )}
-                    </div>
-                    {/* Zone 3: Processing */}
-                    <div className="w-1/3 flex flex-col justify-end items-center pb-1">
-                      {processCount > 0 && (
-                        <div className="absolute top-2 left-2/3 translate-x-1/2">
-                          <Zap size={10} className="text-blue-400 animate-pulse" />
-                        </div>
-                      )}
-                    </div>
-                  </>
-                )}
-                
-                {!isSink && (
-                  <div className="absolute top-1 right-1 flex items-center gap-1 text-xs text-slate-500">
-                    <Users size={12} />
-                    <span>
-                      {processCount}/{stage.actors === Infinity ? '∞' : stage.actors}
-                    </span>
-                  </div>
-                )}
-
-                {isSink && (
-                  <div className="w-full flex items-center justify-center">
-                    <span className="text-3xl font-bold text-green-400">
-                      {totalCount}
-                    </span>
-                  </div>
-                )}
-              </div>
-              {!isSink && (
-                <div className="mt-2 flex flex-col items-center w-full space-y-1">
-                  <div className="flex justify-between w-full px-1 text-[10px] bg-slate-800/50 rounded py-0.5">
-                    <span className="text-slate-400">Process</span>
-                    <span className="font-mono text-blue-300">
-                      {(metrics.avgProcess * HOURS_PER_TICK).toFixed(1)}h
-                    </span>
-                  </div>
-                  <div className="flex justify-between w-full px-1 text-[10px] bg-slate-800/50 rounded py-0.5">
-                    <span className="text-slate-400">Wait</span>
-                    <span
-                      className={`font-mono ${ metrics.avgWait * HOURS_PER_TICK > 1 ? 'text-red-400' : 'text-slate-500' }`}
-                    >
-                      {(metrics.avgWait * HOURS_PER_TICK).toFixed(1)}h
-                    </span>
-                  </div>
-                </div>
-              )}
-              {!isSink && queueCount > 5 && (
-                <div className="absolute -top-8 animate-bounce text-red-500 flex flex-col items-center z-30">
-                  <AlertTriangle size={16} />
-                </div>
-              )}
-            </div>
-          )
-        })}
+        {stages.map((stage) => (
+          <Stage
+            key={stage.id}
+            stage={stage}
+            stageStats={stageStats[stage.id]}
+            metrics={stageMetrics[stage.id]}
+            problems={problems}
+            deploymentCountdown={deploymentCountdown}
+          />
+        ))}
       </div>
+
+      {/* Work Items */}
       {items.map(item => (
-        <div
-          key={item.id}
-          className={`absolute w-3 h-3 rounded-full shadow-sm border border-white/20 z-20 flex items-center justify-center
-            ${ item.isBug ? ITEM_COLORS.bug : item.isUnclear ? ITEM_COLORS.rework : (item.inBatch || (stages[item.stageIndex].id === 'deploy' && item.state === 'waiting')) ? ITEM_COLORS.batch : item.state === 'waiting' && !item.isBug && !item.isUnclear ? ITEM_COLORS.blocked : ITEM_COLORS.normal }
-          `}
-          style={{
-            left: `${item.x}%`,
-            top: `${50 + item.yOffset}%`,
-            transform: 'translate(-50%, -50%)',
-            transition: item.state === 'returning' ? 'left 0.5s linear' : 'left 0.1s linear',
-          }}
-        >
-          {item.isBug && <div className="w-1 h-1 bg-white rounded-full" />}
-          {item.isUnclear && <span className="text-[6px] font-bold text-black">?</span>}
-          {item.state === 'returning' && <ArrowLeft size={8} className="text-white absolute -top-3" />}
-        </div>
+        <WorkItem key={item.id} item={item} stages={stages} />
       ))}
     </div>
   )
@@ -223,6 +114,8 @@ export default function ValueStreamSim() {
     manualTesting: false,
     unclearRequirements: false,
     infrequentDeploy: false,
+    tooManyFeatures: false,
+    unstableProduction: false,
   });
 
   const [deploymentSchedule, setDeploymentSchedule] = useState(24); // Default: 24 hours
@@ -277,9 +170,17 @@ export default function ValueStreamSim() {
 
     // Spawning logic...
     const activeCount = s.items.filter(i => i.stageIndex < currentStages.length - 1).length;
-    let spawnRate = 1800;
-    if (activeCount > 30) spawnRate = 3000;
-    if (now - s.lastSpawn > spawnRate) {
+    let baseSpawnRate = 1800;
+    if (activeCount > 30) baseSpawnRate = 3000;
+
+    // Calculate feature spawn rate
+    let featureSpawnRate = baseSpawnRate;
+    // Apply "Too Many Features" constraint (2x feature rate = half spawn rate)
+    if (currentProblems.tooManyFeatures) {
+      featureSpawnRate = featureSpawnRate / 2;
+    }
+
+    if (now - s.lastSpawn > featureSpawnRate) {
       s.items.push({
         id: Math.random().toString(36).substr(2, 9),
         stageIndex: 0,
@@ -301,6 +202,42 @@ export default function ValueStreamSim() {
       s.lastSpawn = now;
     }
 
+    // Defect generation (Unstable Production constraint)
+    // Normal: defects generated at 20% of feature rate
+    // With constraint: defects generated at 40% of feature rate (2x)
+    // Use baseSpawnRate (not featureSpawnRate) to maintain consistent defect ratio
+    const defectBaseRate = baseSpawnRate * 5; // 5x slower than base features = 20%
+    let defectRate = defectBaseRate;
+
+    // Apply "Unstable Production" constraint (2x defect rate)
+    if (currentProblems.unstableProduction) {
+      defectRate = defectRate / 2; // Halve the time = double the rate
+    }
+
+    if (!s.lastDefectSpawn) s.lastDefectSpawn = now;
+
+    if (now - s.lastDefectSpawn > defectRate) {
+      s.items.push({
+        id: Math.random().toString(36).substr(2, 9),
+        stageIndex: 0,
+        progress: 0,
+        x: 0,
+        yOffset: (Math.random() - 0.5) * 35,
+        isBug: true, // This is a defect
+        isUnclear: false,
+        inBatch: false,
+        createdAt: now,
+        state: 'queued',
+        targetX: 0,
+        currStageProcessTicks: 0,
+        currStageWaitTicks: 0,
+        targetProcessTicks: 0,
+        targetWaitTicks: 0,
+        currentWaitTicks: 0,
+      });
+      s.lastDefectSpawn = now;
+    }
+
     const stageCount = currentStages.length;
     const stageWidth = 100 / stageCount;
     const OFFSET_QUEUE = 0.15;
@@ -320,7 +257,6 @@ export default function ValueStreamSim() {
       const isSink = currentStage.type === 'sink';
       const currentStageId = currentStage.id;
       const stageBaseX = item.stageIndex * stageWidth;
-      const isAutomatedStage = ['dev', 'test', 'deploy'].includes(currentStageId);
 
       if (!isSink) {
         if (item.state === 'processing') item.currStageProcessTicks++;
@@ -522,6 +458,14 @@ export default function ValueStreamSim() {
           if (nextStage.id === 'done') {
             s.completedItems.push(now);
             if (s.completedItems.length > 50) s.completedItems.shift();
+
+            // If this is a defect in production, send it back to Intake
+            if (item.isBug) {
+              item.state = 'returning';
+              item.returnTargetIndex = 0; // Return to Intake stage
+              return;
+            }
+
             item.state = 'processing';
           } else {
             item.state = 'queued';
@@ -772,30 +716,42 @@ export default function ValueStreamSim() {
               icon={Clock}
               description={`Schedules deployments every ${deploymentSchedule} hours. Work waits for the next cycle.`}
             />
+            <ProblemToggle
+              id="tooManyFeatures"
+              label="Too Many Features"
+              active={problems.tooManyFeatures}
+              onClick={toggleProblem}
+              icon={Plus}
+              description="Doubles feature generation rate. Increases WIP and system load."
+            />
+            <ProblemToggle
+              id="unstableProduction"
+              label="Unstable Production"
+              active={problems.unstableProduction}
+              onClick={toggleProblem}
+              icon={ZapOff}
+              description="Doubles defect generation rate. Increases rework and quality issues."
+            />
           </div>
         </div>
 
         <div className="flex flex-wrap gap-6 text-sm text-slate-400 bg-slate-800/50 p-4 rounded-lg border border-slate-700/50">
           <div className="flex items-center gap-2">
-            <div className={`w-3 h-3 rounded-full ${ITEM_COLORS.normal}`}></div>
+            <div className="w-3 h-3 rounded-full bg-blue-500"></div>
             <span>Feature</span>
           </div>
           <div className="flex items-center gap-2">
-            <div className={`w-3 h-3 rounded-full ${ITEM_COLORS.bug}`}></div>
+            <div className="w-3 h-3 rounded-full bg-red-500"></div>
             <span>Defect</span>
           </div>
           <div className="flex items-center gap-2">
-            <div
-              className={`w-3 h-3 rounded-full ${ITEM_COLORS.rework} flex items-center justify-center`}
-            >
+            <div className="w-3 h-3 rounded-full bg-orange-500 flex items-center justify-center">
               <span className="text-[6px] text-black font-bold">?</span>
             </div>
             <span>Unclear Req</span>
           </div>
           <div className="flex items-center gap-2">
-            <div
-              className={`w-3 h-3 rounded-full ${ITEM_COLORS.blocked}`}
-            ></div>
+            <div className="w-3 h-3 rounded-full bg-amber-500"></div>
             <span>Waiting / Blocked</span>
           </div>
           <div className="flex items-center gap-2 border-l border-slate-600 pl-4">

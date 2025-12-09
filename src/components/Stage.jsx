@@ -120,14 +120,7 @@ export const Stage = ({
           </>
         )}
 
-        {/* Sink Stage: Total Count Display */}
-        {isSink && (
-          <div className="w-full flex items-center justify-center">
-            <span className="text-3xl font-bold text-green-400">
-              {totalCount}
-            </span>
-          </div>
-        )}
+        {/* Sink Stage: Production - no counter needed */}
       </div>
 
       {/* Stage Metrics (Process & Wait Times) */}

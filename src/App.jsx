@@ -86,7 +86,7 @@ const MetricCard = ({ label, value, unit, subtext, trend }) => (
 export default function ValueStreamSim() {
   const [isRunning, setIsRunning] = useState(true);
   const [items, setItems] = useState([]);
-  const [metrics, setMetrics] = useState({ throughput: 0, wip: 0, cycleTime: 0 });
+  const [metrics, setMetrics] = useState({ throughput: 0, wip: 0, cycleTime: 0, changeFail: 0, deployFrequency: 0 });
   const [stageMetrics, setStageMetrics] = useState({});
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [selectedStageId, setSelectedStageId] = useState(null);
@@ -101,6 +101,9 @@ export default function ValueStreamSim() {
     items: [],
     lastSpawn: 0,
     completedItems: [],
+    cycleTimes: [], // Track cycle times for items that complete (in milliseconds)
+    deploymentCount: 0, // Total number of deployments
+    failedDeploymentCount: 0, // Number of deployments that became production defects
     startTime: Date.now(),
     history: stages.reduce((acc, stage) => ({ ...acc, [stage.id]: { totalProcess: 0, totalWait: 0, count: 0 } }), {}),
     deploymentReleased: false,
@@ -126,6 +129,9 @@ export default function ValueStreamSim() {
       items: [],
       lastSpawn: 0,
       completedItems: [],
+      cycleTimes: [],
+      deploymentCount: 0,
+      failedDeploymentCount: 0,
       startTime: Date.now(),
       history: stages.reduce((acc, stage) => ({ ...acc, [stage.id]: { totalProcess: 0, totalWait: 0, count: 0 } }), {}),
       deploymentReleased: false,
@@ -139,7 +145,7 @@ export default function ValueStreamSim() {
     };
     setDeploymentCountdown(deploymentSchedule / HOURS_PER_TICK);
     setItems([]);
-    setMetrics({ throughput: 0, wip: 0, cycleTime: 0 });
+    setMetrics({ throughput: 0, wip: 0, cycleTime: 0, changeFail: 0, deployFrequency: 0 });
     setStageMetrics({});
     setIsRunning(true); // Restart the simulation
   };
@@ -165,6 +171,7 @@ export default function ValueStreamSim() {
           isUnclear: false,
           inBatch: false,
           createdAt: now,
+          devStartTime: null, // Track when development processing starts
           state: 'queued',
           targetX: 0,
           currStageProcessTicks: 0,
@@ -327,6 +334,12 @@ export default function ValueStreamSim() {
                 if (hasCapacity) {
                     // Can proceed directly to processing
                     item.state = 'processing';
+
+                    // Mark development start time when item enters Development processing
+                    if (currentStageId === 'dev' && !item.devStartTime) {
+                        item.devStartTime = now;
+                    }
+
                     if (stageConfig.processTime) {
                         const { min, max } = stageConfig.processTime;
                         const processTimeHours = min + Math.random() * (max - min);
@@ -388,6 +401,12 @@ export default function ValueStreamSim() {
         // Move to processing state when capacity becomes available
         if (canStartProcessing && !isSink) {
           item.state = 'processing';
+
+          // Mark development start time when item enters Development processing
+          if (currentStageId === 'dev' && !item.devStartTime) {
+            item.devStartTime = now;
+          }
+
           const stageConfig = currentStages[item.stageIndex];
           if (stageConfig.processTime) {
               const { min, max } = stageConfig.processTime;
@@ -441,6 +460,17 @@ export default function ValueStreamSim() {
             s.completedItems.push(now);
             if (s.completedItems.length > 50) s.completedItems.shift();
 
+            // Track deployment (every item reaching production is a deployment)
+            s.deploymentCount++;
+
+            // Track cycle time if item has a devStartTime
+            if (item.devStartTime) {
+              const cycleTimeMs = now - item.devStartTime;
+              s.cycleTimes.push(cycleTimeMs);
+              // Keep last 50 cycle times for rolling average
+              if (s.cycleTimes.length > 50) s.cycleTimes.shift();
+            }
+
             // Bugs that reach production get sent back to Backlog
             if (item.isBug) {
               item.state = 'returning';
@@ -454,6 +484,7 @@ export default function ValueStreamSim() {
               const defectChance = Math.random() * 100;
               if (defectChance < productionDefectRate) {
                 // This item becomes a production defect
+                s.failedDeploymentCount++; // Track as a failed deployment
                 item.isBug = true;
                 item.isProductionDefect = true; // Mark as coming from production
                 item.state = 'returning';
@@ -519,25 +550,33 @@ export default function ValueStreamSim() {
     }
 
     const activeItems = s.items.filter(i => i.stageIndex < currentStages.length - 1);
-    const doneCount = s.items.filter(
-      i => i.stageIndex === currentStages.length - 1
-    ).length;
 
-    // Calculate throughput in items per simulated hour
-    // Look at completions in the last 5 real seconds
-    const recentCompletions = s.completedItems.filter(
-      t => now - t < 5000
-    ).length;
+    // Total throughput = lifetime count of all items that reached production
+    const lifetimeThroughput = s.completedItems.length;
 
-    // At current simulation speed:
-    // - Real time window: 5 seconds
-    // - Simulated time window: (5 seconds) * (simulationSpeed hours/second) = 5 * simulationSpeed hours
-    // - Throughput: items / simulated hours
-    const simulatedTimeWindow = 5 * simulationSpeed; // simulated hours in 5 real seconds
-    const throughputPerSimulatedHour = simulatedTimeWindow > 0 ? recentCompletions / simulatedTimeWindow : 0;
+    // Calculate average development cycle time
+    // Cycle time = time from when Development processing starts until item reaches Production
+    let avgCycleTimeHours = 0;
+    if (s.cycleTimes.length > 0) {
+      const totalCycleTimeMs = s.cycleTimes.reduce((sum, ct) => sum + ct, 0);
+      const avgCycleTimeMs = totalCycleTimeMs / s.cycleTimes.length;
+      // Convert milliseconds to simulated hours
+      // At simulation speed X: 1000ms real time = X simulated hours
+      // So avgCycleTimeMs real time = (avgCycleTimeMs / 1000) * simulationSpeed simulated hours
+      avgCycleTimeHours = (avgCycleTimeMs / 1000) * simulationSpeed;
+    }
 
-    // Cycle time using Little's Law: WIP / Throughput (in simulated hours)
-    const estCycleTimeHours = throughputPerSimulatedHour > 0 ? activeItems.length / throughputPerSimulatedHour : 0;
+    // Calculate Change Fail %
+    const changeFail = s.deploymentCount > 0 ? (s.failedDeploymentCount / s.deploymentCount) * 100 : 0;
+
+    // Calculate Deploy Frequency (deploys per simulated day)
+    // Time elapsed in real seconds
+    const elapsedRealMs = now - s.startTime;
+    const elapsedRealSeconds = elapsedRealMs / 1000;
+    // Convert to simulated time: elapsed real seconds * simulation speed = simulated hours
+    const elapsedSimulatedHours = elapsedRealSeconds * simulationSpeed;
+    const elapsedSimulatedDays = elapsedSimulatedHours / 24; // 24 hours per day
+    const deployFrequency = elapsedSimulatedDays > 0 ? s.deploymentCount / elapsedSimulatedDays : 0;
 
     const currentStageMetrics = {};
     Object.keys(s.history).forEach(key => {
@@ -552,8 +591,10 @@ export default function ValueStreamSim() {
     setStageMetrics(currentStageMetrics);
     setMetrics({
       wip: activeItems.length,
-      throughput: doneCount,
-      cycleTime: estCycleTimeHours.toFixed(1),
+      throughput: lifetimeThroughput,
+      cycleTime: avgCycleTimeHours.toFixed(1),
+      changeFail: changeFail.toFixed(1),
+      deployFrequency: deployFrequency.toFixed(2),
     });
   };
   
@@ -713,7 +754,7 @@ export default function ValueStreamSim() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <MetricCard
             label="Work In Progress (WIP)"
             value={metrics.wip}
@@ -722,18 +763,25 @@ export default function ValueStreamSim() {
             trend={metrics.wip > 20 ? 'bad' : 'good'}
           />
           <MetricCard
-            label="Total Throughput"
-            value={metrics.throughput}
-            unit="Items Delivered"
-            subtext="Lifetime total"
-            trend="good"
-          />
-          <MetricCard
-            label="Est. Cycle Time"
+            label="Avg. Cycle Time"
             value={metrics.cycleTime}
             unit="hours"
-            subtext="Avg time to complete"
+            subtext="Dev to Production"
             trend={metrics.cycleTime > 100 ? 'bad' : 'good'}
+          />
+          <MetricCard
+            label="Change Fail %"
+            value={metrics.changeFail}
+            unit="%"
+            subtext="Failed Deployments"
+            trend={metrics.changeFail > 15 ? 'bad' : 'good'}
+          />
+          <MetricCard
+            label="Deploy Frequency"
+            value={metrics.deployFrequency}
+            unit="per day"
+            subtext="Deployment Rate"
+            trend={metrics.deployFrequency > 1 ? 'good' : 'bad'}
           />
         </div>
 

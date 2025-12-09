@@ -6,16 +6,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This is a **Value Stream Simulator** - an interactive React application that visualizes software delivery workflows, queues, bottlenecks, and rework loops in real-time. It demonstrates principles from Theory of Constraints, Lean, and DevOps.
 
-The simulator models work items (features and defects) flowing through six stages:
+The simulator models work items (features and defects) flowing through seven stages:
 - **Intake** (entry queue)
 - **Backlog** (queue)
-- **Change Definition** (analysis/planning)
+- **Refining Work** (analysis/planning)
 - **Development** (implementation)
+- **Code Review** (peer review)
 - **Testing** (QA)
 - **Deployment** (release)
 - **Production** (completed work sink)
 
-Users can activate system constraints (Siloed Teams, Large Batches, Quality Issues, Manual Testing, etc.) to observe their impact on metrics like WIP, throughput, and cycle time.
+Users can activate system constraints (Siloed Teams, Large Batches, Coding Errors, Manual Testing, etc.) to observe their impact on metrics like WIP, throughput, and cycle time.
 
 ## Commands
 
@@ -70,8 +71,8 @@ Items progress through states: `queued` → `waiting` → `processing` → `tran
 **Problem Toggles**: Nine constraints that modify simulation behavior:
 - **silos**: Random 15% chance to block waiting→processing transition (src/App.jsx:495)
 - **largeBatches**: Requires 5 items in `waiting` state before batch proceeds (src/App.jsx:497-514)
-- **unclearRequirements**: 3% chance per tick in Development to send item back to Change Definition (src/App.jsx:445-452)
-- **qualityIssues**: 35% chance when entering Testing to mark as defect and return to Development (src/App.jsx:556-563)
+- **unclearRequirements**: 3% chance per tick in Development to send item back to Refining Work (src/App.jsx:445-452)
+- **codingErrors**: 35% chance when entering Testing to mark as defect and return to Development (src/App.jsx:453-460)
 - **manualTesting**: Reduces actors to 1, slows processing by 10x (src/App.jsx:249-254, 434-435)
 - **manualDeploy**: 98% chance to block Deployment processing (src/App.jsx:517-519)
 - **infrequentDeploy**: Uses deployment countdown (e.g., 24h cycles), items wait until countdown=0 (src/App.jsx:407-481)
@@ -118,8 +119,8 @@ Items progress through states: `queued` → `waiting` → `processing` → `tran
 Stages have limited "actors" (concurrent workers). Before transitioning from `waiting` to `processing`, the system checks if `processingItems.length < stage.actors` (src/App.jsx:484-492). This creates realistic bottlenecks.
 
 ### Rework Loops
-- Defects discovered in Testing return to Development (stageIndex=2)
-- Unclear requirements in Development return to Change Definition (stageIndex=1)
+- Defects discovered in Testing return to Development (stageIndex=3)
+- Unclear requirements in Development return to Refining Work (stageIndex=2)
 - Defects reaching Production return to Intake (stageIndex=0)
 
 ### Dynamic Stage Configuration

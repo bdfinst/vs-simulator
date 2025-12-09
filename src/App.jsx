@@ -23,8 +23,9 @@ import { WorkItem } from './components/WorkItem.jsx'
 const STAGES_CONFIG = [
   { id: 'intake', label: 'Intake', type: 'queue', processTime: { min: 0, max: 0 }, waitTime: { min: 0, max: 0 } },
   { id: 'backlog', label: 'Backlog', type: 'queue', processTime: { min: 0, max: 0 }, waitTime: { min: 0, max: 0 } },
-  { id: 'analysis', label: 'Change Definition', type: 'process', processTime: { min: 2, max: 4 }, waitTime: { min: 8, max: 8 }, actors: 2 },
+  { id: 'analysis', label: 'Refining Work', type: 'process', processTime: { min: 2, max: 4 }, waitTime: { min: 8, max: 8 }, actors: 2 },
   { id: 'dev', label: 'Development', type: 'process', processTime: { min: 1, max: 8 }, waitTime: { min: 8, max: 8 }, actors: 5 },
+  { id: 'review', label: 'Code Review', type: 'process', processTime: { min: 0.5, max: 2 }, waitTime: { min: 4, max: 8 }, actors: 2 },
   { id: 'test', label: 'Testing', type: 'process', processTime: { min: 0.5, max: 1 }, waitTime: { min: 0, max: 0 }, actors: 1 },
   { id: 'deploy', label: 'Deployment', type: 'process', processTime: { min: 0.8, max: 1.2 }, waitTime: { min: 0, max: 0 }, actors: Infinity },
   { id: 'done', label: 'Production', type: 'sink', processTime: { min: 0, max: 0 }, waitTime: { min: 0, max: 0 } },
@@ -108,7 +109,7 @@ export default function ValueStreamSim() {
   const [problems, setProblems] = useState({
     silos: false,
     largeBatches: false,
-    qualityIssues: false,
+    codingErrors: false,
     manualDeploy: false,
     contextSwitching: false,
     manualTesting: false,
@@ -196,7 +197,8 @@ export default function ValueStreamSim() {
         currStageProcessTicks: 0,
         currStageWaitTicks: 0,
         targetProcessTicks: 0,
-        targetWaitTicks: 0,
+        currentIntakeTicks: 0,
+        targetIntakeTicks: null,
         currentWaitTicks: 0,
       });
       s.lastSpawn = now;
@@ -224,6 +226,7 @@ export default function ValueStreamSim() {
         x: 0,
         yOffset: (Math.random() - 0.5) * 35,
         isBug: true, // This is a defect
+        isOriginalDefect: true, // Track if this was spawned as a defect
         isUnclear: false,
         inBatch: false,
         createdAt: now,
@@ -232,7 +235,8 @@ export default function ValueStreamSim() {
         currStageProcessTicks: 0,
         currStageWaitTicks: 0,
         targetProcessTicks: 0,
-        targetWaitTicks: 0,
+        currentIntakeTicks: 0,
+        targetIntakeTicks: null,
         currentWaitTicks: 0,
       });
       s.lastDefectSpawn = now;
@@ -267,6 +271,8 @@ export default function ValueStreamSim() {
       if (item.state === 'queued') {
         item.targetX = stageBaseX + stageWidth * OFFSET_QUEUE;
         const stageConfig = currentStages[item.stageIndex];
+        item.currentIntakeTicks = item.currentIntakeTicks || 0;
+        item.currentIntakeTicks++;
 
         if (stageConfig.type === 'queue') {
             const nextStageIndex = item.stageIndex + 1;
@@ -287,28 +293,67 @@ export default function ValueStreamSim() {
             }
         }
         else {
-            // Move to waiting state first (wait time comes before processing)
-            item.state = 'waiting';
-            item.currentWaitTicks = 0;
+            // Items spend "intake wait time" in queued state before being noticed
+            // This represents the time before work is picked up from the queue
+            let intakeWaitComplete = false;
 
-            // For infrequent deploy, items wait indefinitely until countdown reaches 0
+            // For infrequent deploy, items wait indefinitely in queued until countdown reaches 0
             if (currentProblems.infrequentDeploy && currentStageId === 'deploy') {
-                item.targetWaitTicks = Infinity; // Wait indefinitely for deployment window
+                if (currentDeploymentCountdown <= 0) {
+                    intakeWaitComplete = true;
+                }
             } else if (stageConfig.waitTime) {
-                // Set wait time based on stage configuration
-                let minWaitHours = stageConfig.waitTime.min;
-                let maxWaitHours = stageConfig.waitTime.max;
+                // Initialize target intake wait time if not set
+                if (!item.targetIntakeTicks) {
+                    let minWaitHours = stageConfig.waitTime.min;
+                    let maxWaitHours = stageConfig.waitTime.max;
 
-                if (currentProblems.manualTesting && currentStageId === 'test') {
-                    minWaitHours = Math.max(minWaitHours, 8);
-                    maxWaitHours = Math.max(maxWaitHours, 8);
-                    if (maxWaitHours < minWaitHours) maxWaitHours = minWaitHours;
+                    if (currentProblems.manualTesting && currentStageId === 'test') {
+                        minWaitHours = Math.max(minWaitHours, 8);
+                        maxWaitHours = Math.max(maxWaitHours, 8);
+                        if (maxWaitHours < minWaitHours) maxWaitHours = minWaitHours;
+                    }
+
+                    const waitTimeHours = minWaitHours + Math.random() * (maxWaitHours - minWaitHours);
+                    item.targetIntakeTicks = Math.max(1, waitTimeHours / HOURS_PER_TICK);
                 }
 
-                const waitTimeHours = minWaitHours + Math.random() * (maxWaitHours - minWaitHours);
-                item.targetWaitTicks = Math.max(1, waitTimeHours / HOURS_PER_TICK);
+                // Check if intake wait time has elapsed
+                if (item.currentIntakeTicks >= item.targetIntakeTicks) {
+                    intakeWaitComplete = true;
+                }
             } else {
-                item.targetWaitTicks = 0;
+                // No wait time configured, proceed immediately
+                intakeWaitComplete = true;
+            }
+
+            // After intake wait completes, check for resource availability
+            if (intakeWaitComplete) {
+                // Check if stage has actor capacity
+                let hasCapacity = true;
+                if (stageConfig.actors > 0 && stageConfig.actors !== Infinity) {
+                    const processingItems = s.items.filter(
+                        i => i.stageIndex === item.stageIndex && i.state === 'processing'
+                    );
+                    hasCapacity = processingItems.length < stageConfig.actors;
+                }
+
+                if (hasCapacity) {
+                    // Can proceed directly to processing
+                    item.state = 'processing';
+                    if (stageConfig.processTime) {
+                        const { min, max } = stageConfig.processTime;
+                        const processTimeHours = min + Math.random() * (max - min);
+                        item.targetProcessTicks = Math.max(1, processTimeHours / HOURS_PER_TICK);
+                    } else {
+                        item.targetProcessTicks = 2;
+                    }
+                    item.progress = 0;
+                } else {
+                    // No capacity, move to waiting state (resource queue)
+                    item.state = 'waiting';
+                    item.currentWaitTicks = 0;
+                }
             }
         }
       } else if (item.state === 'processing') {
@@ -333,7 +378,7 @@ export default function ValueStreamSim() {
           if (Math.random() < 0.03) {
             item.isUnclear = true;
             item.state = 'returning';
-            item.returnTargetIndex = 1;
+            item.returnTargetIndex = 2; // Refining Work (analysis)
             return;
           }
         }
@@ -341,6 +386,15 @@ export default function ValueStreamSim() {
         if (!isSink) {
           if (item.progress >= 100) {
             item.progress = 100;
+
+            // Convert reworked bugs to features after processing completes in Development
+            // This prevents infinite rework loops
+            if (item.isBeingReworked && currentStageId === 'dev') {
+              item.isBug = false;
+              item.isOriginalDefect = false;
+              item.isBeingReworked = false;
+            }
+
             // After processing completes, move to transferring state
             item.state = 'transferring';
             item.progress = 0;
@@ -349,35 +403,27 @@ export default function ValueStreamSim() {
           item.progress = 100;
         }
       } else if (item.state === 'waiting') {
+        // Waiting state is now only for resource queuing (capacity constraints)
         item.targetX = stageBaseX + stageWidth * OFFSET_WAIT;
         item.currentWaitTicks++;
 
-        let canStartProcessing = true;
-
-        // Infrequent Deploy logic: items wait until countdown reaches 0
-        if (currentProblems.infrequentDeploy && currentStageId === 'deploy') {
-          if (currentDeploymentCountdown > 0) {
-            canStartProcessing = false;
-          }
-          // When countdown hits 0 or below, all items can move (batch release)
-        } else {
-          // Normal wait time logic (not infrequent deploy)
-          if (item.targetWaitTicks > 0 && item.currentWaitTicks < item.targetWaitTicks) {
-            canStartProcessing = false;
-          }
-        }
+        let canStartProcessing = false;
 
         // Check if stage has actor capacity
-        if (canStartProcessing && !isSink) {
+        if (!isSink) {
             const stageConfig = currentStages[item.stageIndex];
             if (stageConfig.actors > 0 && stageConfig.actors !== Infinity) {
                 const processingItems = s.items.filter(
                     i => i.stageIndex === item.stageIndex && i.state === 'processing'
                 );
                 canStartProcessing = processingItems.length < stageConfig.actors;
+            } else {
+                // Infinite capacity means can always start
+                canStartProcessing = true;
             }
         }
 
+        // Apply additional constraints
         if (canStartProcessing) {
             if (currentProblems.silos && Math.random() < 0.15) canStartProcessing = false;
 
@@ -406,7 +452,7 @@ export default function ValueStreamSim() {
             }
         }
 
-        // Move to processing state after wait time completes
+        // Move to processing state when capacity becomes available
         if (canStartProcessing && !isSink) {
           item.state = 'processing';
           const stageConfig = currentStages[item.stageIndex];
@@ -440,19 +486,25 @@ export default function ValueStreamSim() {
           item.stageIndex = nextIdx;
 
           const nextStage = currentStages[item.stageIndex];
-          if (currentProblems.qualityIssues && nextStage.id === 'test') {
+          if (currentProblems.codingErrors && nextStage.id === 'test') {
             if (Math.random() < 0.35) {
               item.isBug = true;
               item.state = 'returning';
-              item.returnTargetIndex = 2;
+              item.returnTargetIndex = 3; // Development
               return;
             }
           }
 
+          // Bugs have a chance to slip through to deployment
+          // Not all bugs are caught - some make it to production
           if (item.isBug && nextStage.id === 'deploy') {
-            item.state = 'returning';
-            item.returnTargetIndex = 2;
-            return;
+            // 80% chance to catch and reject the bug before deploy
+            if (Math.random() < 0.8) {
+              item.state = 'returning';
+              item.returnTargetIndex = 3; // Development
+              return;
+            }
+            // 20% slip through to production
           }
 
           if (nextStage.id === 'done') {
@@ -469,6 +521,9 @@ export default function ValueStreamSim() {
             item.state = 'processing';
           } else {
             item.state = 'queued';
+            // Reset intake tracking for new stage
+            item.currentIntakeTicks = 0;
+            item.targetIntakeTicks = null;
           }
         }
       } else if (item.state === 'returning') {
@@ -483,6 +538,20 @@ export default function ValueStreamSim() {
           item.state = 'queued';
           item.currStageProcessTicks = 0;
           item.currStageWaitTicks = 0;
+
+          // Reset intake tracking for new stage
+          item.currentIntakeTicks = 0;
+          item.targetIntakeTicks = null;
+
+          // Clear rework flags when item arrives back for rework
+          // isUnclear items get fixed in Refining Work
+          if (item.isUnclear && item.returnTargetIndex === 2) {
+            item.isUnclear = false;
+          }
+          // Mark bugs as being reworked (they'll be converted to features after processing completes)
+          if (item.isBug && item.returnTargetIndex === 3) {
+            item.isBeingReworked = true;
+          }
         }
       }
 
@@ -682,15 +751,15 @@ export default function ValueStreamSim() {
               active={problems.unclearRequirements}
               onClick={toggleProblem}
               icon={FileQuestion}
-              description="Ambiguity discovered in Development sends work back to Analysis."
+              description="Ambiguity discovered in Development sends work back to Refining Work."
             />
             <ProblemToggle
-              id="qualityIssues"
-              label="Quality Issues (Rework)"
-              active={problems.qualityIssues}
+              id="codingErrors"
+              label="Coding Errors"
+              active={problems.codingErrors}
               onClick={toggleProblem}
               icon={ShieldAlert}
-              description="Defects found in Testing send work back to Development."
+              description="Coding errors discovered in Testing send work back to Development."
             />
             <ProblemToggle
               id="manualTesting"

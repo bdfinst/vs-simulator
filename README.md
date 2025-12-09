@@ -8,12 +8,12 @@ The Value Stream Simulator models a typical software delivery pipeline with stag
 
 ## Features
 
-- **Real-time Visualization**: Animated flow of work items through stages (Backlog → Change Definition → Development → Testing → Deployment → Production)
+- **Real-time Visualization**: Animated flow of work items through stages (Backlog → Refining Work → Development → Code Review → Testing → Deployment → Production)
 - **Interactive Constraints**: Toggle common system problems to see their immediate impact:
   - Siloed Teams
   - Large Batch Sizes
   - Unclear Requirements
-  - Quality Issues (Rework)
+  - Coding Errors
   - Manual Testing
   - Manual Deploy Gates
   - Infrequent Deploys
@@ -67,14 +67,15 @@ npm test:coverage
 
 ### Stages
 
-The simulator models six stages in a value stream:
+The simulator models seven stages in a value stream:
 
 1. **Backlog**: Entry point for new work
-2. **Change Definition**: Requirements analysis and planning
+2. **Refining Work**: Requirements analysis and planning
 3. **Development**: Implementation of features
-4. **Testing**: Quality assurance and validation
-5. **Deployment**: Release to production
-6. **Production**: Completed work
+4. **Code Review**: Peer review and quality checks
+5. **Testing**: Quality assurance and validation
+6. **Deployment**: Release to production
+7. **Production**: Completed work
 
 Each stage has three zones:
 
@@ -95,8 +96,8 @@ Activate constraints to simulate real-world problems:
 
 - **Siloed Teams**: Increases handoff delays between stages
 - **Large Batch Sizes**: Forces items to wait for peers (batch of 5)
-- **Unclear Requirements**: Sends work back from Development to Analysis
-- **Quality Issues**: Defects discovered in Testing return to Development
+- **Unclear Requirements**: Sends work back from Development to Refining Work
+- **Coding Errors**: Coding errors discovered in Testing return to Development
 - **Manual Testing**: Reduces parallelism and increases process time
 - **Manual Deploy Gate**: Simulates change review board delays
 - **Infrequent Deploys**: Schedules releases on fixed intervals (configurable)

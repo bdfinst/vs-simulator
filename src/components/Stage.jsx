@@ -40,6 +40,22 @@ export const Stage = ({
     }
   }
 
+  // Get background color based on step type
+  const getStepTypeBackground = () => {
+    if (isSink) return 'border-green-500/50 bg-green-900/10'
+
+    switch (stage.stepType) {
+      case 'manual':
+        return 'border-blue-500/30 bg-blue-900/10'
+      case 'automated':
+        return 'border-green-500/30 bg-green-900/10'
+      case 'batch':
+        return 'border-purple-500/30 bg-purple-900/10'
+      default:
+        return 'border-slate-600 bg-slate-800/90'
+    }
+  }
+
   return (
     <div className="flex flex-col items-center group relative w-32">
       {/* Stage Label with Step Type Icon and Settings Button */}
@@ -67,7 +83,7 @@ export const Stage = ({
       <div
         className={`
           w-full h-32 rounded-lg border-2 flex flex-row overflow-hidden transition-colors duration-500 relative
-          ${isSink ? 'border-green-500/50 bg-green-900/10' : 'border-slate-600 bg-slate-800/90'}
+          ${getStepTypeBackground()}
         `}
       >
         {/* Batch Step Countdown Overlay */}

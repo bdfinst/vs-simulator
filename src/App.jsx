@@ -522,14 +522,22 @@ export default function ValueStreamSim() {
     const doneCount = s.items.filter(
       i => i.stageIndex === currentStages.length - 1
     ).length;
+
+    // Calculate throughput in items per simulated hour
+    // Look at completions in the last 5 real seconds
     const recentCompletions = s.completedItems.filter(
       t => now - t < 5000
     ).length;
-    const throughputPerSec = recentCompletions / 5;
-    // Cycle time using Little's Law: WIP / Throughput (in seconds)
-    // Convert to hours by dividing by 3600 (seconds per hour)
-    const estCycleTimeSeconds = throughputPerSec > 0 ? activeItems.length / throughputPerSec : 0;
-    const estCycleTimeHours = estCycleTimeSeconds / 3600;
+
+    // At current simulation speed:
+    // - Real time window: 5 seconds
+    // - Simulated time window: (5 seconds) * (simulationSpeed hours/second) = 5 * simulationSpeed hours
+    // - Throughput: items / simulated hours
+    const simulatedTimeWindow = 5 * simulationSpeed; // simulated hours in 5 real seconds
+    const throughputPerSimulatedHour = simulatedTimeWindow > 0 ? recentCompletions / simulatedTimeWindow : 0;
+
+    // Cycle time using Little's Law: WIP / Throughput (in simulated hours)
+    const estCycleTimeHours = throughputPerSimulatedHour > 0 ? activeItems.length / throughputPerSimulatedHour : 0;
 
     const currentStageMetrics = {};
     Object.keys(s.history).forEach(key => {

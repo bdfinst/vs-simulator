@@ -1,6 +1,6 @@
 import React from 'react';
 
-export const SettingsMenu = ({ stages, onUpdateStage, onClose, deploymentSchedule, setDeploymentSchedule }) => {
+export const SettingsMenu = ({ stages, onUpdateStage, onClose, deploymentSchedule, setDeploymentSchedule, selectedStageId = null }) => {
   const handleInputChange = (stageId, field, value) => {
     const stage = stages.find(s => s.id === stageId);
     if (stage) {
@@ -34,15 +34,23 @@ export const SettingsMenu = ({ stages, onUpdateStage, onClose, deploymentSchedul
     }
   };
 
+  // Filter stages based on selectedStageId
+  const stagesToShow = selectedStageId
+    ? stages.filter(s => s.id === selectedStageId)
+    : stages.filter(s => s.type === 'process');
+
+  const selectedStage = selectedStageId ? stages.find(s => s.id === selectedStageId) : null;
+  const title = selectedStage ? `${selectedStage.label} Settings` : 'Simulation Settings';
+
   return (
     <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center">
       <div className="bg-slate-800 border border-slate-700 rounded-lg shadow-xl p-6 w-full max-w-4xl text-slate-200">
         <div className="flex justify-between items-center mb-4">
-          <h2 className="text-xl font-bold">Simulation Settings</h2>
+          <h2 className="text-xl font-bold">{title}</h2>
           <button onClick={onClose} className="text-slate-400 hover:text-white">&times;</button>
         </div>
         <div className="space-y-4 max-h-[70vh] overflow-y-auto">
-          {stages.filter(s => s.type === 'process').map(stage => (
+          {stagesToShow.map(stage => (
             <div key={stage.id} className="bg-slate-900/50 p-4 rounded-lg">
               <h3 className="font-semibold text-lg text-blue-300 mb-3">{stage.label}</h3>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -83,23 +91,25 @@ export const SettingsMenu = ({ stages, onUpdateStage, onClose, deploymentSchedul
               </div>
             </div>
           ))}
-          <div className="bg-slate-900/50 p-4 rounded-lg">
-            <h3 className="font-semibold text-lg text-blue-300 mb-3">Deployment Settings</h3>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div>
-                <label htmlFor="deployment-schedule" className="block text-sm font-medium text-slate-400 mb-1">Deployment Schedule (h)</label>
-                <input
-                  type="number"
-                  id="deployment-schedule"
-                  value={deploymentSchedule}
-                  onChange={(e) => setDeploymentSchedule(parseFloat(e.target.value) || 0)}
-                  className="w-full bg-slate-700 border border-slate-600 rounded-md px-2 py-1 text-white"
-                  step="1"
-                  min="1"
-                />
+          {!selectedStageId && (
+            <div className="bg-slate-900/50 p-4 rounded-lg">
+              <h3 className="font-semibold text-lg text-blue-300 mb-3">Deployment Settings</h3>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label htmlFor="deployment-schedule" className="block text-sm font-medium text-slate-400 mb-1">Deployment Schedule (h)</label>
+                  <input
+                    type="number"
+                    id="deployment-schedule"
+                    value={deploymentSchedule}
+                    onChange={(e) => setDeploymentSchedule(parseFloat(e.target.value) || 0)}
+                    className="w-full bg-slate-700 border border-slate-600 rounded-md px-2 py-1 text-white"
+                    step="1"
+                    min="1"
+                  />
+                </div>
               </div>
             </div>
-          </div>
+          )}
         </div>
       </div>
     </div>

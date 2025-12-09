@@ -8,7 +8,6 @@ import {
   Play,
   Plus,
   RefreshCw,
-  Settings,
   ShieldAlert,
   Users,
   ZapOff,
@@ -21,7 +20,6 @@ import { WorkItem } from './components/WorkItem.jsx'
 // --- Constants & Configuration ---
 
 const STAGES_CONFIG = [
-  { id: 'intake', label: 'Intake', type: 'queue', processTime: { min: 0, max: 0 }, waitTime: { min: 0, max: 0 } },
   { id: 'backlog', label: 'Backlog', type: 'queue', processTime: { min: 0, max: 0 }, waitTime: { min: 0, max: 0 } },
   { id: 'analysis', label: 'Refining Work', type: 'process', processTime: { min: 2, max: 4 }, waitTime: { min: 8, max: 8 }, actors: 2 },
   { id: 'dev', label: 'Development', type: 'process', processTime: { min: 1, max: 8 }, waitTime: { min: 8, max: 8 }, actors: 5 },
@@ -36,11 +34,22 @@ const HOURS_PER_TICK = 0.5 // Scale: 2 ticks = 1 hour of simulated time
 
 // --- Components ---
 
-const SimulationCanvas = ({ items, stageStats, stageMetrics, stages, problems, deploymentCountdown }) => {
+const SimulationCanvas = ({ items, stageStats, stageMetrics, stages, problems, deploymentCountdown, onStageSettingsClick }) => {
   return (
     <div className="relative w-full h-80 bg-slate-900 rounded-xl overflow-hidden border border-slate-700 shadow-inner flex items-center px-2 select-none">
       {/* Connector Lines */}
       <div className="absolute top-1/2 left-4 right-4 h-1 bg-slate-800 -translate-y-1/2 z-0" />
+
+      {/* Intake Arrow */}
+      <div className="absolute left-2 top-1/2 -translate-y-1/2 z-10 flex items-center">
+        <div className="flex flex-col items-center">
+          <span className="text-[8px] text-slate-500 uppercase mb-1">Intake</span>
+          <div className="flex items-center">
+            <div className="w-8 h-0.5 bg-blue-400"></div>
+            <div className="w-0 h-0 border-l-[6px] border-l-blue-400 border-t-[4px] border-t-transparent border-b-[4px] border-b-transparent"></div>
+          </div>
+        </div>
+      </div>
 
       {/* Stages */}
       <div className="relative z-10 w-full flex justify-between px-2">
@@ -52,6 +61,7 @@ const SimulationCanvas = ({ items, stageStats, stageMetrics, stages, problems, d
             metrics={stageMetrics[stage.id]}
             problems={problems}
             deploymentCountdown={deploymentCountdown}
+            onSettingsClick={onStageSettingsClick}
           />
         ))}
       </div>
@@ -105,6 +115,7 @@ export default function ValueStreamSim() {
   const [metrics, setMetrics] = useState({ throughput: 0, wip: 0, cycleTime: 0 });
   const [stageMetrics, setStageMetrics] = useState({});
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [selectedStageId, setSelectedStageId] = useState(null);
   const [stages, setStages] = useState(STAGES_CONFIG);
   const [problems, setProblems] = useState({
     silos: false,
@@ -121,6 +132,7 @@ export default function ValueStreamSim() {
 
   const [deploymentSchedule, setDeploymentSchedule] = useState(24); // Default: 24 hours
   const [deploymentCountdown, setDeploymentCountdown] = useState(24 / 0.5); // Initialize to full schedule in ticks
+  const [intakeRate, setIntakeRate] = useState(1.0); // Intake rate multiplier (1.0 = normal)
 
   const stateRef = useRef({
     items: [],
@@ -180,6 +192,8 @@ export default function ValueStreamSim() {
     if (currentProblems.tooManyFeatures) {
       featureSpawnRate = featureSpawnRate / 2;
     }
+    // Apply intake rate multiplier (higher intakeRate = faster spawning = lower spawn interval)
+    featureSpawnRate = featureSpawnRate / intakeRate;
 
     if (now - s.lastSpawn > featureSpawnRate) {
       s.items.push({
@@ -378,7 +392,7 @@ export default function ValueStreamSim() {
           if (Math.random() < 0.03) {
             item.isUnclear = true;
             item.state = 'returning';
-            item.returnTargetIndex = 2; // Refining Work (analysis)
+            item.returnTargetIndex = 1; // Refining Work (analysis)
             return;
           }
         }
@@ -490,7 +504,7 @@ export default function ValueStreamSim() {
             if (Math.random() < 0.35) {
               item.isBug = true;
               item.state = 'returning';
-              item.returnTargetIndex = 3; // Development
+              item.returnTargetIndex = 2; // Development
               return;
             }
           }
@@ -501,7 +515,7 @@ export default function ValueStreamSim() {
             // 80% chance to catch and reject the bug before deploy
             if (Math.random() < 0.8) {
               item.state = 'returning';
-              item.returnTargetIndex = 3; // Development
+              item.returnTargetIndex = 2; // Development
               return;
             }
             // 20% slip through to production
@@ -511,10 +525,10 @@ export default function ValueStreamSim() {
             s.completedItems.push(now);
             if (s.completedItems.length > 50) s.completedItems.shift();
 
-            // If this is a defect in production, send it back to Intake
+            // If this is a defect in production, send it back to Backlog
             if (item.isBug) {
               item.state = 'returning';
-              item.returnTargetIndex = 0; // Return to Intake stage
+              item.returnTargetIndex = 0; // Return to Backlog
               return;
             }
 
@@ -545,11 +559,11 @@ export default function ValueStreamSim() {
 
           // Clear rework flags when item arrives back for rework
           // isUnclear items get fixed in Refining Work
-          if (item.isUnclear && item.returnTargetIndex === 2) {
+          if (item.isUnclear && item.returnTargetIndex === 1) {
             item.isUnclear = false;
           }
           // Mark bugs as being reworked (they'll be converted to features after processing completes)
-          if (item.isBug && item.returnTargetIndex === 3) {
+          if (item.isBug && item.returnTargetIndex === 2) {
             item.isBeingReworked = true;
           }
         }
@@ -655,9 +669,13 @@ export default function ValueStreamSim() {
         <SettingsMenu
           stages={stages}
           onUpdateStage={handleUpdateStage}
-          onClose={() => setIsSettingsOpen(false)}
+          onClose={() => {
+            setIsSettingsOpen(false);
+            setSelectedStageId(null);
+          }}
           deploymentSchedule={deploymentSchedule}
           setDeploymentSchedule={setDeploymentSchedule}
+          selectedStageId={selectedStageId}
         />
       )}
       <div className="max-w-6xl mx-auto space-y-6">
@@ -679,13 +697,34 @@ export default function ValueStreamSim() {
               <RefreshCw size={18} />
               Reset
             </button>
-            <button onClick={() => setIsSettingsOpen(true)} className="flex items-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-md font-medium transition-colors">
-              <Settings size={18} />
-              Settings
-            </button>
           </div>
         </div>
-        
+
+        {/* Intake Rate Slider */}
+        <div className="bg-slate-800/50 p-4 rounded-lg border border-slate-700">
+          <div className="flex items-center justify-between mb-2">
+            <label htmlFor="intake-rate" className="text-sm font-medium text-slate-300">
+              Intake Rate
+            </label>
+            <span className="text-sm font-mono text-blue-300">{intakeRate.toFixed(1)}x</span>
+          </div>
+          <input
+            id="intake-rate"
+            type="range"
+            min="0.1"
+            max="3.0"
+            step="0.1"
+            value={intakeRate}
+            onChange={(e) => setIntakeRate(parseFloat(e.target.value))}
+            className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer"
+          />
+          <div className="flex justify-between text-xs text-slate-500 mt-1">
+            <span>0.1x (Slow)</span>
+            <span>1.0x (Normal)</span>
+            <span>3.0x (Fast)</span>
+          </div>
+        </div>
+
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <MetricCard
             label="Work In Progress (WIP)"
@@ -719,6 +758,10 @@ export default function ValueStreamSim() {
               stages={dynamicStages}
               problems={problems}
               deploymentCountdown={deploymentCountdown}
+              onStageSettingsClick={(stageId) => {
+                setSelectedStageId(stageId);
+                setIsSettingsOpen(true);
+              }}
             />
           </div>
         </div>

@@ -1,5 +1,5 @@
 import React from 'react'
-import { AlertTriangle, Users, Zap } from 'lucide-react'
+import { AlertTriangle, Users, Zap, Settings } from 'lucide-react'
 import { StageZone } from './StageZone.jsx'
 
 const HOURS_PER_TICK = 0.5 // Must match App.jsx constant
@@ -14,6 +14,7 @@ export const Stage = ({
   metrics,
   problems,
   deploymentCountdown,
+  onSettingsClick,
 }) => {
   const isSink = stage.type === 'sink'
   const queueCount = stageStats?.queued || 0
@@ -25,10 +26,21 @@ export const Stage = ({
 
   return (
     <div className="flex flex-col items-center group relative w-32">
-      {/* Stage Label */}
-      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">
-        {stage.label}
-      </span>
+      {/* Stage Label with Settings Button */}
+      <div className="flex items-center gap-1 mb-2">
+        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+          {stage.label}
+        </span>
+        {!isSink && onSettingsClick && (
+          <button
+            onClick={() => onSettingsClick(stage.id)}
+            className="p-0.5 hover:bg-slate-700 rounded transition-colors"
+            title="Configure stage settings"
+          >
+            <Settings size={12} className="text-slate-400 hover:text-slate-200" />
+          </button>
+        )}
+      </div>
 
       {/* Stage Container */}
       <div

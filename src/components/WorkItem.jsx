@@ -14,7 +14,7 @@ const ITEM_COLORS = {
 /**
  * WorkItem - Represents a single work item (feature/defect) flowing through the system
  */
-export const WorkItem = ({ item, stages }) => {
+export const WorkItem = ({ item, stages, hasExceptionFlow }) => {
   // Determine item color based on state and type
   const getItemColor = () => {
     if (item.isProductionDefect) return ITEM_COLORS.productionDefect
@@ -35,7 +35,32 @@ export const WorkItem = ({ item, stages }) => {
   }
 
   const getTransition = () => {
-    return item.state === 'returning' ? 'left 0.5s linear' : 'left 0.1s linear'
+    return item.state === 'returning' ? 'left 0.5s linear, top 0.5s linear' : 'left 0.1s linear, top 0.1s linear'
+  }
+
+  // Calculate Y position based on whether stage is in exception flow
+  const getYPosition = () => {
+    const currentStage = stages[item.stageIndex]
+
+    if (!hasExceptionFlow) {
+      // No exception flow - use middle of single-row container
+      // Container is 320px tall (h-80), stages centered
+      return `calc(50% + ${item.yOffset * 3}px)`
+    }
+
+    // With exception flow, container is 550px tall
+    // Exception flow row: ~50px from top (label) + ~130px (stage center) = ~120px
+    // Normal flow row: ~550px - 160px (from bottom) = ~390px
+
+    if (currentStage?.isExceptionFlow) {
+      // Exception flow stage - position in top section
+      // Exception flow label (30px) + stage label (20px) + half stage height (64px) = ~114px
+      return `calc(120px + ${item.yOffset * 3}px)`
+    } else {
+      // Normal flow stage - position in bottom section
+      // Total height (550px) - bottom margin - half stage (64px) - metrics (80px) = ~390px
+      return `calc(390px + ${item.yOffset * 3}px)`
+    }
   }
 
   return (
@@ -43,7 +68,7 @@ export const WorkItem = ({ item, stages }) => {
       className={`absolute w-3 h-3 rounded-full shadow-sm border border-white/20 z-20 flex items-center justify-center ${getItemColor()}`}
       style={{
         left: `${item.x}%`,
-        top: `calc(${50 + item.yOffset}% - 6px)`,
+        top: getYPosition(),
         transform: 'translate(-50%, -50%)',
         transition: getTransition(),
       }}

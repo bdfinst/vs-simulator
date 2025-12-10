@@ -113,13 +113,14 @@ The Value Stream Simulator now supports multiple predefined workflow scenarios t
 
 When External QA finds a defect (30% chance):
 1. Item marked as defect/bug
-2. Queues at Triage Meeting stage (exception flow)
-3. Waits for next scheduled meeting (up to 48 hours)
-4. During meeting, triage determines:
-   - **80% chance**: Code defect → Returns to Development
-   - **20% chance**: Test issue → Goes to Test Fix stage
-5. After Test Fix, returns to External QA for verification
-6. May require multiple cycles
+2. **Visually moves up** to exception flow (top row)
+3. Queues at Triage Meeting stage (exception flow)
+4. Waits for next scheduled meeting (up to 48 hours)
+5. During meeting, triage determines:
+   - **80% chance**: Code defect → **Moves back down** to normal flow, returns to Development
+   - **20% chance**: Test issue → **Stays in exception flow**, goes to Test Fix stage
+6. After Test Fix, **moves back down** to normal flow and returns to External QA for verification
+7. May require multiple cycles with vertical movement each time
 
 **Use Case**: Organizations with separate QA departments, offshore testing teams, contractor-based QA, siloed organizations, traditional enterprise IT with handoff-heavy processes
 
@@ -249,6 +250,23 @@ For batch-type stages:
 - Format: "Next release: Xh"
 - Updates in real-time
 - Visual indicator of batching behavior
+
+### Exception Flow Visual Layout
+
+When scenarios include exception flow stages (marked with `isExceptionFlow: true`):
+- **Container height**: Automatically increases from 320px to 550px
+- **Two-tier layout**:
+  - Exception flow stages displayed in top row (red color scheme)
+  - Normal flow stages displayed in bottom row
+- **Work item movement**:
+  - Items in normal flow stages positioned at 75% height (bottom row)
+  - Items in exception flow stages positioned at 25% height (top row)
+  - Items **smoothly animate vertically** when transitioning between flows
+  - Creates clear visual indication of rework loops and exception handling
+- **Flow visualization**:
+  - Items move up when entering exception flow (e.g., defects going to triage)
+  - Items move down when returning to normal flow (e.g., after triage or test fixes)
+  - Vertical transitions use same animation timing as horizontal movement
 
 ## Simulation Behavior
 

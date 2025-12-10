@@ -4,7 +4,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a **Value Stream Simulator** - an interactive React application that visualizes software delivery workflows, queues, bottlenecks, and rework loops in real-time. It demonstrates principles from Theory of Constraints, Lean, and DevOps.
+This repository contains **multiple interactive simulators** for software delivery and development practices:
+
+### 1. Value Stream Simulator
+An interactive React application that visualizes software delivery workflows, queues, bottlenecks, and rework loops in real-time. Demonstrates principles from Theory of Constraints, Lean, and DevOps.
+
+### 2. Code Review Methodology Simulator
+A Monte Carlo-based simulation comparing Async Code Reviews vs. Pair Programming, showing the dramatic impact of wait times on flow efficiency. See CODE_REVIEW_SIMULATOR.md for detailed documentation.
 
 The simulator supports **multiple workflow scenarios** that model different software delivery approaches:
 - **Standard Agile Flow** (default): Typical agile workflow with continuous deployment
@@ -26,6 +32,12 @@ Standard Agile Flow stages (default):
 - **Production** (completed work sink)
 
 Users can switch scenarios via the UI dropdown and observe how different workflows affect flow metrics.
+
+## Simulation Navigation
+
+Users can switch between different simulators using the hamburger menu (top-left):
+- **Value Stream Simulator** - Workflow visualization with multiple scenarios
+- **Pairing vs Async Code Review** - Monte Carlo comparison of development methodologies
 
 ## Commands
 

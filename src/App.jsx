@@ -5,6 +5,8 @@ import {
 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { SettingsMenu } from './components/SettingsMenu.jsx'
+import { SimulationMenu, MenuToggleButton } from './components/SimulationMenu.jsx'
+import { CodeReviewSimulator } from './components/CodeReviewSimulator.jsx'
 import { Stage } from './components/Stage.jsx'
 import { WorkItem } from './components/WorkItem.jsx'
 import { SCENARIOS, getScenario, getScenarioList } from './scenarios.js'
@@ -28,32 +30,46 @@ const SimulationCanvas = ({ items, stageStats, stageMetrics, stages, deploymentC
   const hasExceptionFlow = exceptionStages.length > 0
 
   return (
-    <div className={`relative w-full ${hasExceptionFlow ? 'h-[450px]' : 'h-80'} bg-slate-900 rounded-xl overflow-hidden border border-slate-700 shadow-inner flex flex-col justify-center px-2 select-none`}>
+    <div className={`relative w-full ${hasExceptionFlow ? 'h-[550px]' : 'h-80'} bg-slate-900 rounded-xl overflow-hidden border border-slate-700 shadow-inner flex flex-col justify-center px-2 select-none`}>
       {/* Exception Flow - Top Row (Red) */}
       {hasExceptionFlow && (
-        <div className="relative z-10 w-full mb-4">
+        <div className="relative z-10 w-full mb-4" data-flow-row="exception">
           <div className="flex items-center gap-2 mb-2 pl-2">
             <span className="text-[10px] font-bold text-red-400 uppercase tracking-wider">Exception Flow</span>
             <div className="flex-1 h-px bg-red-500/30" />
           </div>
-          <div className="relative flex justify-start gap-4 px-2">
-            {exceptionStages.map((stage) => (
-              <Stage
-                key={stage.id}
-                stage={stage}
-                stageStats={stageStats[stage.id]}
-                metrics={stageMetrics[stage.id]}
-                deploymentCountdown={deploymentCountdown}
-                batchCountdown={batchCountdowns?.[stage.id]}
-                onSettingsClick={onStageSettingsClick}
-              />
-            ))}
+          <div className="relative h-full">
+            {/* Exception flow stages positioned based on their stage index to align with normal flow */}
+            {exceptionStages.map((stage) => {
+              // Find the stage index in the full stages array
+              const stageIndex = stages.findIndex(s => s.id === stage.id)
+              const totalStages = stages.length
+              // Calculate position as percentage - same as how normal flow items are positioned
+              const leftPercent = (stageIndex / totalStages) * 100
+
+              return (
+                <div
+                  key={stage.id}
+                  className="absolute"
+                  style={{ left: `${leftPercent}%`, transform: 'translateX(-50%)' }}
+                >
+                  <Stage
+                    stage={stage}
+                    stageStats={stageStats[stage.id]}
+                    metrics={stageMetrics[stage.id]}
+                    deploymentCountdown={deploymentCountdown}
+                    batchCountdown={batchCountdowns?.[stage.id]}
+                    onSettingsClick={onStageSettingsClick}
+                  />
+                </div>
+              )
+            })}
           </div>
         </div>
       )}
 
       {/* Normal Flow - Main Row */}
-      <div className="relative flex-1 flex items-center">
+      <div className="relative flex-1 flex items-center" data-flow-row="normal">
         {/* Connector Lines */}
         <div className="absolute top-1/2 left-4 right-4 h-1 bg-slate-800 -translate-y-1/2 z-0" />
 
@@ -82,12 +98,12 @@ const SimulationCanvas = ({ items, stageStats, stageMetrics, stages, deploymentC
             />
           ))}
         </div>
-
-        {/* Work Items */}
-        {items.map(item => (
-          <WorkItem key={item.id} item={item} stages={stages} />
-        ))}
       </div>
+
+      {/* Work Items - Positioned absolutely relative to entire canvas */}
+      {items.map(item => (
+        <WorkItem key={item.id} item={item} stages={stages} hasExceptionFlow={hasExceptionFlow} />
+      ))}
     </div>
   )
 }
@@ -108,6 +124,8 @@ const MetricCard = ({ label, value, unit, subtext, trend }) => (
 )
 
 export default function ValueStreamSim() {
+  const [currentSimulation, setCurrentSimulation] = useState('value-stream');
+  const [isSimMenuOpen, setIsSimMenuOpen] = useState(false);
   const [currentScenario, setCurrentScenario] = useState('standard');
   const [isRunning, setIsRunning] = useState(true);
   const [items, setItems] = useState([]);
@@ -671,8 +689,37 @@ export default function ValueStreamSim() {
     return () => cancelAnimationFrame(animationFrameId);
   }, [isRunning, dynamicStages, deploymentSchedule, deploymentCountdown, simulationSpeed, batchSize, productionDefectRate]);
 
+  // Render different simulations based on selection
+  if (currentSimulation === 'pairing-vs-review') {
+    return (
+      <>
+        <SimulationMenu
+          isOpen={isSimMenuOpen}
+          onClose={() => setIsSimMenuOpen(false)}
+          currentSimulation={currentSimulation}
+          onSimulationChange={(simId) => {
+            setCurrentSimulation(simId);
+          }}
+        />
+        <CodeReviewSimulator onOpenMenu={() => setIsSimMenuOpen(true)} />
+      </>
+    )
+  }
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-200 font-sans p-4 md:p-8">
+      {/* Simulation Menu */}
+      <SimulationMenu
+        isOpen={isSimMenuOpen}
+        onClose={() => setIsSimMenuOpen(false)}
+        currentSimulation={currentSimulation}
+        onSimulationChange={(simId) => {
+          setCurrentSimulation(simId);
+          // Reset when switching simulations
+          resetSimulation();
+        }}
+      />
+
       {isSettingsOpen && (
         <SettingsMenu
           stages={stages}
@@ -690,13 +737,16 @@ export default function ValueStreamSim() {
       )}
       <div className="max-w-6xl mx-auto space-y-6">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-          <div>
-            <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
-              Value Stream Simulator
-            </h1>
-            <p className="text-slate-400 mt-1">
-              Visualize workflow, queues, and rework loops.
-            </p>
+          <div className="flex items-center gap-4">
+            <MenuToggleButton onClick={() => setIsSimMenuOpen(true)} />
+            <div>
+              <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
+                Value Stream Simulator
+              </h1>
+              <p className="text-slate-400 mt-1">
+                Visualize workflow, queues, and rework loops.
+              </p>
+            </div>
           </div>
           <div className="flex gap-2">
             <button onClick={() => setIsRunning(!isRunning)} className={`flex items-center gap-2 px-4 py-2 rounded-md font-medium transition-colors ${isRunning ? 'bg-amber-600 hover:bg-amber-700' : 'bg-green-600 hover:bg-green-700'}`}>

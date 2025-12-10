@@ -1,27 +1,36 @@
-# Value Stream Simulator
+# Software Delivery Simulators
 
-An interactive web-based simulator that visualizes software delivery workflows, queues, bottlenecks, and rework loops in real-time. Built with React and Vite, this tool helps teams understand how various system constraints impact flow efficiency, cycle time, and throughput.
+An interactive web-based suite of simulators that help visualize and understand software delivery practices. Built with React and Vite, these tools help teams understand how various system constraints and methodologies impact flow efficiency, cycle time, and throughput.
 
-## Overview
+## Available Simulators
 
-The Value Stream Simulator models a typical software delivery pipeline with stages from Backlog to Production. Watch work items flow through the system, and activate different constraints to see their real-time impact on key metrics like Work In Progress (WIP), throughput, and cycle time.
+### 1. Value Stream Simulator
+Models a typical software delivery pipeline with stages from Backlog to Production. Watch work items flow through the system, and activate different constraints to see their real-time impact on key metrics like Work In Progress (WIP), throughput, and cycle time.
 
-## Features
+**Features:**
+- Multiple workflow scenarios (Agile, Waterfall, CAB Approval, External QA, Elite DevOps)
+- Real-time visualization of work item flow
+- Interactive system constraints
+- Configurable stage settings
+- Live metrics dashboard
 
-- **Real-time Visualization**: Animated flow of work items through stages (Backlog → Refining Work → Development → Code Review → Testing → Deployment → Production)
-- **Interactive Constraints**: Toggle common system problems to see their immediate impact:
-  - Siloed Teams
-  - Large Batch Sizes
-  - Unclear Requirements
-  - Coding Errors
-  - Manual Testing
-  - Manual Deploy Gates
-  - Infrequent Deploys
-  - Too Many Features
-  - Unstable Production
-- **Configurable Settings**: Adjust process times, wait times, and deployment schedules
-- **Live Metrics**: Track WIP, throughput, cycle time, and per-stage performance
-- **Visual Indicators**: Color-coded work items (features, defects, unclear requirements, blocked items)
+### 2. Code Review Methodology Simulator
+Monte Carlo-based simulation comparing Async Code Reviews vs. Pair Programming. Demonstrates the dramatic impact of wait times on flow efficiency through quantitative analysis.
+
+**Features:**
+- Team composition modeling (Junior/Mid/Senior developers)
+- Configurable wait times, review times, and rejection rates
+- Animated swimlane visualizations
+- Side-by-side metrics comparison
+- Stacked bar charts showing work vs. wait time breakdown
+
+See [CODE_REVIEW_SIMULATOR.md](CODE_REVIEW_SIMULATOR.md) for detailed documentation.
+
+## Navigation
+
+Use the **hamburger menu** (top-left) to switch between simulators:
+- Value Stream Simulator
+- Pairing vs Async Code Review
 
 ## Getting Started
 
@@ -125,6 +134,7 @@ Use the Settings menu to customize:
 - **React** - UI framework
 - **Vite** - Build tool and dev server
 - **Tailwind CSS** - Styling
+- **Recharts** - Data visualization
 - **Lucide React** - Icons
 - **Vitest** - Testing framework
 - **Testing Library** - Component testing
